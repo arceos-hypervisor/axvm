@@ -1,9 +1,7 @@
 #![no_std]
-#![feature(asm_const)]
-#![feature(concat_idents)]
-#![feature(naked_functions)]
-#![feature(const_trait_impl)]
-#![cfg_attr(target_arch = "riscv64", feature(riscv_ext_intrinsics))]
+// #![feature(concat_idents)]
+// #![feature(naked_functions)]
+// #![feature(const_trait_impl)]
 
 //! This crate provides a minimal VM monitor (VMM) for running guest VMs.
 //!
