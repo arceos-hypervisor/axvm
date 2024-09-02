@@ -5,7 +5,7 @@ use axerrno::AxResult;
 
 use axaddrspace::GuestPhysAddr;
 
-use axdevice::EmulatedDeviceConfig;
+use axdevice_base::EmulatedDeviceConfig;
 
 /// A part of `AxVCpuConfig`, which represents an architecture-dependent `VCpu`.
 ///
