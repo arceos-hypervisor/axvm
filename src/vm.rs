@@ -233,13 +233,15 @@ impl<H: AxVMHal> AxVM<H> {
                     reg,
                     reg_width,
                 } => {
-                    let val = self.get_devices().handle_mmio_read(addr, width.into())?;
+                    let val = self
+                        .get_devices()
+                        .handle_mmio_read(*addr, (*width).into())?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     self.get_devices()
-                        .handle_mmio_write(addr, width.into(), *data as usize);
+                        .handle_mmio_write(*addr, (*width).into(), *data as usize);
                     true
                 }
                 AxVCpuExitReason::IoRead { port: _, width: _ } => true,
