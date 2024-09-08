@@ -21,11 +21,13 @@ use crate::{has_hardware_support, AxVMHal};
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
 
+/// A vCPU with architecture-independent interface.
 #[allow(type_alias_bounds)]
 type VCpu = AxVCpu<AxArchVCpuImpl>;
+/// A reference to a vCPU.
 #[allow(type_alias_bounds)]
 pub type AxVCpuRef = Arc<VCpu>;
-
+/// A reference to a VM.
 #[allow(type_alias_bounds)]
 pub type AxVMRef<H: AxVMHal> = Arc<AxVM<H>>; // we know the bound is not enforced here, we keep it for clarity
 
@@ -196,10 +198,12 @@ impl<H: AxVMHal> AxVM<H> {
         Ok(image_load_hva)
     }
 
+    /// Returns if the VM is running.
     pub fn running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
     }
 
+    /// Boots the VM by setting the running flag as true.
     pub fn boot(&self) -> AxResult {
         if !has_hardware_support() {
             ax_err!(Unsupported, "Hardware does not support virtualization")
@@ -212,10 +216,19 @@ impl<H: AxVMHal> AxVM<H> {
         }
     }
 
+    /// Returns this VM's emulated devices.
     pub fn get_devices(&self) -> &AxVmDevices {
         &self.inner_const.devices
     }
 
+    /// Run a vCPU according to the given vcpu_id.
+    ///
+    /// ## Arguments
+    /// * `vcpu_id` - the id of the vCPU to run.
+    ///
+    /// ## Returns
+    /// * `AxVCpuExitReason` - the exit reason of the vCPU, wrapped in an `AxResult`.
+    ///
     pub fn run_vcpu(&self, vcpu_id: usize) -> AxResult<AxVCpuExitReason> {
         let vcpu = self
             .vcpu(vcpu_id)
