@@ -21,20 +21,18 @@ use crate::{has_hardware_support, AxVMHal};
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
 
-// Todo: should Vcpu related type be put into `axvcpu`` crate?
-#[allow(type_alias_bounds)] // we know the bound is not enforced here, we keep it for clarity
+#[allow(type_alias_bounds)]
 type VCpu = AxVCpu<AxArchVCpuImpl>;
 #[allow(type_alias_bounds)]
 pub type AxVCpuRef = Arc<VCpu>;
 
 #[allow(type_alias_bounds)]
-pub type AxVMRef<H: AxVMHal> = Arc<AxVM<H>>;
+pub type AxVMRef<H: AxVMHal> = Arc<AxVM<H>>; // we know the bound is not enforced here, we keep it for clarity
 
 struct AxVMInnerConst {
     id: usize,
     config: AxVMConfig,
     vcpu_list: Box<[AxVCpuRef]>,
-    // to be added: device_list: ...
     devices: AxVmDevices,
 }
 
@@ -55,19 +53,21 @@ pub struct AxVM<H: AxVMHal> {
 }
 
 impl<H: AxVMHal> AxVM<H> {
+    /// Creates a new VM with the given configuration.
+    /// Returns an error if the configuration is invalid.
+    /// The VM is not started until `boot` is called.
     pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H>> {
         let result = Arc::new({
-            let vcpu_pcpu_id_pairs = config.get_vcpu_pcpu_id_pairs();
+            let vcpu_id_pcpu_sets = config.get_vcpu_affinities();
 
             // Create VCpus.
-            let mut vcpu_list = Vec::with_capacity(vcpu_pcpu_id_pairs.len());
+            let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
 
-            for (vcpu_id, pcpu_id) in vcpu_pcpu_id_pairs {
-                // Todo: distinguish between `favor_phys_cpu` and `affinity`.
+            for (vcpu_id, phys_cpu_set) in vcpu_id_pcpu_sets {
                 vcpu_list.push(Arc::new(VCpu::new(
                     vcpu_id,
-                    pcpu_id,
-                    pcpu_id,
+                    0, // Currently not used.
+                    phys_cpu_set,
                     <AxArchVCpuImpl as AxArchVCpu>::CreateConfig::default(),
                 )?));
             }
@@ -231,7 +231,7 @@ impl<H: AxVMHal> AxVM<H> {
                     addr,
                     width,
                     reg,
-                    reg_width,
+                    reg_width: _,
                 } => {
                     let val = self
                         .get_devices()

@@ -1,11 +1,9 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use axerrno::AxResult;
-
 use axaddrspace::GuestPhysAddr;
-
 use axdevice_base::EmulatedDeviceConfig;
+use axerrno::AxResult;
 
 /// A part of `AxVCpuConfig`, which represents an architecture-dependent `VCpu`.
 ///
@@ -67,7 +65,8 @@ pub struct AxVMConfig {
     #[allow(dead_code)]
     vm_type: VMType,
 
-    cpu_mask_bitmap: usize,
+    cpu_num: usize,
+    phys_cpu_sets: Option<Vec<usize>>,
     cpu_config: AxVCpuConfig,
 
     image_config: VMImageConfig,
@@ -84,7 +83,8 @@ impl From<AxVMCrateConfig> for AxVMConfig {
             id: cfg.id,
             name: cfg.name,
             vm_type: VMType::from(cfg.vm_type),
-            cpu_mask_bitmap: cfg.cpu_set,
+            cpu_num: cfg.cpu_num,
+            phys_cpu_sets: cfg.phys_cpu_sets,
             cpu_config: AxVCpuConfig {
                 bsp_entry: GuestPhysAddr::from(cfg.entry_point),
                 ap_entry: GuestPhysAddr::from(cfg.entry_point),
@@ -112,23 +112,18 @@ impl AxVMConfig {
         self.name.clone()
     }
 
-    /// Returns the list of vCPUs and physical CPUs
-    /// in the form of (physical CPU id, virtual CPU id) pair
-    pub fn get_vcpu_pcpu_id_pairs(&self) -> Vec<(usize, usize)> {
+    /// Returns vCpu id list and its corresponding pCpu affinity list.
+    /// If the pCpu affinity is None, it means the vCpu will be allocated to any available pCpu randomly.
+    pub fn get_vcpu_affinities(&self) -> Vec<(usize, Option<usize>)> {
         let mut vcpu_pcpu_pairs = Vec::new();
-        let mut cfg_cpu_allocate_bitmap = self.cpu_mask_bitmap;
-
-        let mut pcpu_id = 0;
-        let mut vcpu_id = 0;
-        while cfg_cpu_allocate_bitmap != 0 {
-            if cfg_cpu_allocate_bitmap & 1 != 0 {
-                vcpu_pcpu_pairs.push((vcpu_id, pcpu_id));
-                vcpu_id += 1;
-            }
-            pcpu_id += 1;
-            cfg_cpu_allocate_bitmap >>= 1;
+        for vcpu_id in 0..self.cpu_num {
+            vcpu_pcpu_pairs.push((vcpu_id, None));
         }
-
+        if let Some(phys_cpu_sets) = &self.phys_cpu_sets {
+            for (vcpu_id, pcpu_mask_bitmap) in phys_cpu_sets.iter().enumerate() {
+                vcpu_pcpu_pairs[vcpu_id].1 = Some(*pcpu_mask_bitmap);
+            }
+        }
         vcpu_pcpu_pairs
     }
 
@@ -173,7 +168,16 @@ pub struct AxVMCrateConfig {
     vm_type: usize,
 
     // Resources.
-    cpu_set: usize,
+    // The number of virtual CPUs.
+    cpu_num: usize,
+    // The mask of physical CPUs who can run this VM.
+    // * If None, vcpu will be scheduled on available physical CPUs randomly.
+    // * If set, each vcpu will be scheduled on the specified physical CPUs.
+    //      For example, [0x0101, 0x0010] means:
+    //          * vCpu0 can be scheduled at pCpu0 and pCpu2;
+    //          * vCpu1 will only be scheduled at pCpu1;
+    //      It will phrase an error if the number of vCpus is not equal to the length of `phys_cpu_sets` array.
+    phys_cpu_sets: Option<Vec<usize>>,
 
     entry_point: usize,
 
@@ -205,7 +209,6 @@ impl AxVMCrateConfig {
                 alloc::format!("toml deserialize get err {err:?}")
             )
         })?;
-        debug!("emu devices configs: {:?}", config.emu_devices);
         Ok(config)
     }
 }
