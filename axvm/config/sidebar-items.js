@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["VMType"],"struct":["AxVCpuConfig","AxVMConfig","AxVMCrateConfig","VMImageConfig","VmMemConfig"]};

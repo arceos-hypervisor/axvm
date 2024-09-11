@@ -1,0 +1,9 @@
+(function() {
+    var implementors = Object.fromEntries([["axvm",[["impl <a class=\"trait\" href=\"https://docs.rs/serde/1.0.210/serde/ser/trait.Serialize.html\" title=\"trait serde::ser::Serialize\">Serialize</a> for <a class=\"enum\" href=\"axvm/config/enum.VMType.html\" title=\"enum axvm::config::VMType\">VMType</a>"],["impl <a class=\"trait\" href=\"https://docs.rs/serde/1.0.210/serde/ser/trait.Serialize.html\" title=\"trait serde::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"axvm/config/struct.AxVMCrateConfig.html\" title=\"struct axvm::config::AxVMCrateConfig\">AxVMCrateConfig</a>"],["impl <a class=\"trait\" href=\"https://docs.rs/serde/1.0.210/serde/ser/trait.Serialize.html\" title=\"trait serde::ser::Serialize\">Serialize</a> for <a class=\"struct\" href=\"axvm/config/struct.VmMemConfig.html\" title=\"struct axvm::config::VmMemConfig\">VmMemConfig</a>"]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":57,"fragment_lengths":[835]}
