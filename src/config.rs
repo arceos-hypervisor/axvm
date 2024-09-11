@@ -95,9 +95,9 @@ impl From<AxVMCrateConfig> for AxVMConfig {
             },
             image_config: VMImageConfig {
                 kernel_load_gpa: GuestPhysAddr::from(cfg.kernel_load_addr),
-                bios_load_gpa: cfg.bios_load_addr.map(|addr| GuestPhysAddr::from(addr)),
-                dtb_load_gpa: cfg.dtb_load_addr.map(|addr| GuestPhysAddr::from(addr)),
-                ramdisk_load_gpa: cfg.ramdisk_load_addr.map(|addr| GuestPhysAddr::from(addr)),
+                bios_load_gpa: cfg.bios_load_addr.map(GuestPhysAddr::from),
+                dtb_load_gpa: cfg.dtb_load_addr.map(GuestPhysAddr::from),
+                ramdisk_load_gpa: cfg.ramdisk_load_addr.map(GuestPhysAddr::from),
             },
             memory_regions: cfg.memory_regions,
             emu_devices: cfg.emu_devices,
