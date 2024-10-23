@@ -118,23 +118,30 @@ impl AxVMConfig {
         self.name.clone()
     }
 
-    /// Returns vCpu id list and its corresponding pCpu affinity list.
+    /// Returns vCpu id list and its corresponding pCpu affinity list, as well as its physical id.
     /// If the pCpu affinity is None, it means the vCpu will be allocated to any available pCpu randomly.
-    pub fn get_vcpu_affinities(&self) -> Vec<(usize, Option<usize>)> {
-        let mut vcpu_pcpu_pairs = Vec::new();
+    /// if the pCPU id is not provided, the vCpu's physical id will be set as vCpu id.
+    ///
+    /// Returns a vector of tuples, each tuple contains:
+    /// - The vCpu id.
+    /// - The pCpu affinity mask, `None` if not set.
+    /// - The physical id of the vCpu, equal to vCpu id if not provided.
+    pub fn get_vcpu_affinities_pcpu_ids(&self) -> Vec<(usize, Option<usize>, usize)> {
+        let mut vcpu_pcpu_tuples = Vec::new();
         for vcpu_id in 0..self.cpu_num {
-            vcpu_pcpu_pairs.push((vcpu_id, None));
+            vcpu_pcpu_tuples.push((vcpu_id, None, vcpu_id));
         }
         if let Some(phys_cpu_sets) = &self.phys_cpu_sets {
             for (vcpu_id, pcpu_mask_bitmap) in phys_cpu_sets.iter().enumerate() {
-                vcpu_pcpu_pairs[vcpu_id].1 = Some(*pcpu_mask_bitmap);
+                vcpu_pcpu_tuples[vcpu_id].1 = Some(*pcpu_mask_bitmap);
             }
         }
-        vcpu_pcpu_pairs
-    }
-
-    pub fn get_vcpu_phys_ids(&self) -> &Option<Vec<usize>> {
-        &self.phys_cpu_ids
+        if let Some(phys_cpu_ids) = &self.phys_cpu_ids {
+            for (vcpu_id, phys_id) in phys_cpu_ids.iter().enumerate() {
+                vcpu_pcpu_tuples[vcpu_id].2 = *phys_id;
+            }
+        }
+        vcpu_pcpu_tuples
     }
 
     /// Returns configurations related to VM image load addresses.
