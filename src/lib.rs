@@ -30,3 +30,8 @@ pub type AxVMPerCpu = axvcpu::AxPerCpu<vcpu::AxVMArchPerCpuImpl>;
 pub fn has_hardware_support() -> bool {
     vcpu::has_hardware_support()
 }
+
+/// Send IPI to the specified CPU.
+pub fn send_ipi(to: usize) {
+    vcpu::send_ipi(to)
+}

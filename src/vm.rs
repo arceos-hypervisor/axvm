@@ -244,7 +244,7 @@ impl<H: AxVMHal> AxVM<H> {
     /// ## Returns
     /// * `AxVCpuExitReason` - the exit reason of the vCPU, wrapped in an `AxResult`.
     ///
-    pub fn run_vcpu(&self, vcpu_id: usize, cpu_id: isize) -> AxResult<AxVCpuExitReason> {
+    pub fn run_vcpu(&self, vcpu_id: usize, cpu_id: usize) -> AxResult<AxVCpuExitReason> {
         let vcpu = self
             .vcpu(vcpu_id)
             .ok_or_else(|| ax_err_type!(InvalidInput, "Invalid vcpu_id"))?;

@@ -5,6 +5,7 @@ cfg_if::cfg_if! {
         pub use x86_vcpu::VmxArchVCpu as AxArchVCpuImpl;
         pub use x86_vcpu::VmxArchPerCpuState as AxVMArchPerCpuImpl;
         pub use x86_vcpu::has_hardware_support;
+        pub use x86_vcpu::send_ipi as send_ipi;
         pub type AxVCpuCreateConfig = ();
 
         // Note:
@@ -18,10 +19,12 @@ cfg_if::cfg_if! {
         pub use riscv_vcpu::RISCVPerCpu as AxVMArchPerCpuImpl;
         pub use riscv_vcpu::RISCVVCpuCreateConfig as AxVCpuCreateConfig;
         pub use riscv_vcpu::has_hardware_support;
+        pub use riscv_vcpu::send_ipi as send_ipi;
     } else if #[cfg(target_arch = "aarch64")] {
         pub use arm_vcpu::Aarch64VCpu as AxArchVCpuImpl;
         pub use arm_vcpu::Aarch64PerCpu as AxVMArchPerCpuImpl;
         pub use arm_vcpu::Aarch64VCpuCreateConfig as AxVCpuCreateConfig;
         pub use arm_vcpu::has_hardware_support;
+        pub use arm_vcpu::send_ipi as send_ipi;
     }
 }
