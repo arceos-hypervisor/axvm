@@ -53,6 +53,10 @@ pub struct AxVM<H: AxVMHal> {
     inner_mut: AxVMInnerMut<H>,
 }
 
+// DEL
+// static STATE1: AtomicBool = AtomicBool::new(true);
+// static STATE2: AtomicBool = AtomicBool::new(true);
+
 impl<H: AxVMHal> AxVM<H> {
     /// Creates a new VM with the given configuration.
     /// Returns an error if the configuration is invalid.
@@ -92,6 +96,7 @@ impl<H: AxVMHal> AxVM<H> {
             let mut address_space =
                 AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
             for mem_region in config.memory_regions() {
+                error!("mem: {:#x?}", mem_region);
                 let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
                     ax_err_type!(
                         InvalidInput,
@@ -293,4 +298,55 @@ impl<H: AxVMHal> AxVM<H> {
         vcpu.unbind()?;
         Ok(exit_reason)
     }
+
+    /// TEST
+    pub fn notify(&self, vcpu_id: usize, irq: usize) -> AxResult {
+        let vcpu = self
+            .vcpu(vcpu_id)
+            .ok_or_else(|| ax_err_type!(InvalidInput, "Invalid vcpu_id"))?;
+
+        vcpu.notify_irq(irq);
+        Ok(())
+    }
+
+    /// TEST
+    pub fn denotify(&self, vcpu_id: usize, irq: usize) -> AxResult {
+        let vcpu = self
+            .vcpu(vcpu_id)
+            .ok_or_else(|| ax_err_type!(InvalidInput, "Invalid vcpu_id"))?;
+
+        vcpu.denotify_irq(irq);
+        Ok(())
+    }
+
+    // DEL change
+    // pub fn change_state(&self, vcpu_id: usize, state: bool) {
+    //     info!("set VCPU{} state: {}", vcpu_id, state);
+    //     match vcpu_id {
+    //         0 => {
+    //             STATE1.store(state, Ordering::SeqCst);
+    //         }
+    //         1 => {
+    //             STATE2.store(state, Ordering::SeqCst);
+    //         }
+    //         _ => {
+    //             panic!("wrong id {}", vcpu_id);
+    //         }
+    //     }
+    // }
+
+    // /// DEL get state
+    // pub fn state(&self, vcpu_id: usize) -> bool {
+    //     match vcpu_id {
+    //         0 => {
+    //             STATE1.load(Ordering::SeqCst)
+    //         }
+    //         1 => {
+    //             STATE2.load(Ordering::SeqCst)
+    //         }
+    //         _ => {
+    //             panic!("wrong id {}", vcpu_id);
+    //         }
+    //     }
+    // }
 }
