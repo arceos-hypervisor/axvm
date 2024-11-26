@@ -14,7 +14,7 @@ use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
 
 use crate::config::AxVMConfig;
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
+use crate::vcpu::{AxArchEmuRegs, AxArchVCpuImpl, AxVCpuCreateConfig};
 use crate::{has_hardware_support, AxVMHal};
 
 const VM_ASPACE_BASE: usize = 0x0;
@@ -269,6 +269,23 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     self.get_devices()
                         .handle_mmio_write(*addr, (*width).into(), *data as usize);
+                    true
+                }
+                AxVCpuExitReason::SysRegRead { addr, reg } => {
+                    AxArchEmuRegs::<U>::emu_register_handle_read(
+                        (*addr).into(),
+                        *reg,
+                        vcpu.clone(),
+                    );
+                    true
+                }
+                AxVCpuExitReason::SysRegWrite { addr, reg, value } => {
+                    AxArchEmuRegs::<U>::emu_register_handle_write(
+                        (*addr).into(),
+                        *reg,
+                        *value,
+                        vcpu.clone(),
+                    );
                     true
                 }
                 AxVCpuExitReason::IoRead { port: _, width: _ } => true,
