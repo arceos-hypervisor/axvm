@@ -279,10 +279,9 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     );
                     true
                 }
-                AxVCpuExitReason::SysRegWrite { addr, reg, value } => {
+                AxVCpuExitReason::SysRegWrite { addr, value } => {
                     AxArchEmuRegs::<U>::emu_register_handle_write(
                         (*addr).into(),
-                        *reg,
                         *value,
                         vcpu.clone(),
                     );
