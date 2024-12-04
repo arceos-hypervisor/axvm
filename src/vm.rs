@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use axdevice_base::VCpuInfo;
 // use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -30,11 +31,19 @@ pub type AxVCpuRef<U: AxVCpuHal> = Arc<VCpu<U>>;
 #[allow(type_alias_bounds)]
 pub type AxVMRef<H: AxVMHal, U: AxVCpuHal> = Arc<AxVM<H, U>>; // we know the bound is not enforced here, we keep it for clarity
 
+pub struct VCpuInfoImpl;
+
+impl VCpuInfo for VCpuInfoImpl {
+    fn get_current_vcpu_id() -> usize {
+        todo!("get_current_vcpu_id")
+    }
+}
+
 struct AxVMInnerConst<U: AxVCpuHal> {
     id: usize,
     config: AxVMConfig,
     vcpu_list: Box<[AxVCpuRef<U>]>,
-    devices: AxVmDevices,
+    devices: AxVmDevices<VCpuInfoImpl>,
 }
 
 unsafe impl<U: AxVCpuHal> Send for AxVMInnerConst<U> {}
@@ -231,7 +240,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     }
 
     /// Returns this VM's emulated devices.
-    pub fn get_devices(&self) -> &AxVmDevices {
+    pub fn get_devices(&self) -> &AxVmDevices<VCpuInfoImpl> {
         &self.inner_const.devices
     }
 
@@ -268,15 +277,20 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     self.get_devices()
-                        .handle_mmio_write(*addr, (*width).into(), *data as usize);
+                        .handle_mmio_write(*addr, (*width).into(), *data as usize)?;
                     true
                 }
-                AxVCpuExitReason::IoRead { port: _, width: _ } => true,
-                AxVCpuExitReason::IoWrite {
-                    port: _,
-                    width: _,
-                    data: _,
-                } => true,
+                AxVCpuExitReason::IoRead { port, width } => {
+                    let val = self.get_devices().handle_port_read(*port, *width)?;
+                    vcpu.set_gpr(0, val); // The target is always eax/ax/al, todo: handle access_width correctly
+
+                    true
+                }
+                AxVCpuExitReason::IoWrite { port, width, data } => {
+                    self.get_devices()
+                        .handle_port_write(*port, *width, *data as usize)?;
+                    true
+                }
                 AxVCpuExitReason::NestedPageFault { addr, access_flags } => self
                     .inner_mut
                     .address_space
