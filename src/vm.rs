@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use axdevice_base::VCpuInfo;
+use axdevice_base::DeviceRWContext;
 // use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -31,19 +31,11 @@ pub type AxVCpuRef<U: AxVCpuHal> = Arc<VCpu<U>>;
 #[allow(type_alias_bounds)]
 pub type AxVMRef<H: AxVMHal, U: AxVCpuHal> = Arc<AxVM<H, U>>; // we know the bound is not enforced here, we keep it for clarity
 
-pub struct VCpuInfoImpl;
-
-impl VCpuInfo for VCpuInfoImpl {
-    fn get_current_vcpu_id() -> usize {
-        todo!("get_current_vcpu_id")
-    }
-}
-
 struct AxVMInnerConst<U: AxVCpuHal> {
     id: usize,
     config: AxVMConfig,
     vcpu_list: Box<[AxVCpuRef<U>]>,
-    devices: AxVmDevices<VCpuInfoImpl>,
+    devices: AxVmDevices,
 }
 
 unsafe impl<U: AxVCpuHal> Send for AxVMInnerConst<U> {}
@@ -240,7 +232,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     }
 
     /// Returns this VM's emulated devices.
-    pub fn get_devices(&self) -> &AxVmDevices<VCpuInfoImpl> {
+    pub fn get_devices(&self) -> &AxVmDevices {
         &self.inner_const.devices
     }
 
@@ -271,24 +263,24 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 } => {
                     let val = self
                         .get_devices()
-                        .handle_mmio_read(*addr, (*width).into())?;
+                        .handle_mmio_read(*addr, (*width).into(), DeviceRWContext::new(vcpu_id))?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     self.get_devices()
-                        .handle_mmio_write(*addr, (*width).into(), *data as usize)?;
+                        .handle_mmio_write(*addr, (*width).into(), *data as usize, DeviceRWContext::new(vcpu_id))?;
                     true
                 }
                 AxVCpuExitReason::IoRead { port, width } => {
-                    let val = self.get_devices().handle_port_read(*port, *width)?;
+                    let val = self.get_devices().handle_port_read(*port, *width, DeviceRWContext::new(vcpu_id))?;
                     vcpu.set_gpr(0, val); // The target is always eax/ax/al, todo: handle access_width correctly
 
                     true
                 }
                 AxVCpuExitReason::IoWrite { port, width, data } => {
                     self.get_devices()
-                        .handle_port_write(*port, *width, *data as usize)?;
+                        .handle_port_write(*port, *width, *data as usize, DeviceRWContext::new(vcpu_id))?;
                     true
                 }
                 AxVCpuExitReason::NestedPageFault { addr, access_flags } => self
@@ -305,5 +297,9 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         vcpu.unbind()?;
         Ok(exit_reason)
+    }
+
+    pub fn inject_interrupt_to_vcpu(&self) -> AxResult {
+        todo!()
     }
 }
