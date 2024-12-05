@@ -2,7 +2,9 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use axaddrspace::device::AccessWidth;
 use axdevice_base::DeviceRWContext;
+use cpumask::CpuMask;
 // use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -46,6 +48,8 @@ struct AxVMInnerMut<H: AxVMHal> {
     address_space: Mutex<AddrSpace<H::PagingHandler>>,
     _marker: core::marker::PhantomData<H>,
 }
+
+const TEMP_MAX_VCPU_NUM: usize = 64;
 
 /// A Virtual Machine.
 pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
@@ -261,26 +265,60 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     reg,
                     reg_width: _,
                 } => {
-                    let val = self
-                        .get_devices()
-                        .handle_mmio_read(*addr, (*width).into(), DeviceRWContext::new(vcpu_id))?;
+                    let val = self.get_devices().handle_mmio_read(
+                        *addr,
+                        (*width).into(),
+                        DeviceRWContext::new(vcpu_id),
+                    )?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
-                    self.get_devices()
-                        .handle_mmio_write(*addr, (*width).into(), *data as usize, DeviceRWContext::new(vcpu_id))?;
+                    self.get_devices().handle_mmio_write(
+                        *addr,
+                        (*width).into(),
+                        *data as usize,
+                        DeviceRWContext::new(vcpu_id),
+                    )?;
                     true
                 }
                 AxVCpuExitReason::IoRead { port, width } => {
-                    let val = self.get_devices().handle_port_read(*port, *width, DeviceRWContext::new(vcpu_id))?;
+                    let val = self.get_devices().handle_port_read(
+                        *port,
+                        *width,
+                        DeviceRWContext::new(vcpu_id),
+                    )?;
                     vcpu.set_gpr(0, val); // The target is always eax/ax/al, todo: handle access_width correctly
 
                     true
                 }
                 AxVCpuExitReason::IoWrite { port, width, data } => {
-                    self.get_devices()
-                        .handle_port_write(*port, *width, *data as usize, DeviceRWContext::new(vcpu_id))?;
+                    self.get_devices().handle_port_write(
+                        *port,
+                        *width,
+                        *data as usize,
+                        DeviceRWContext::new(vcpu_id),
+                    )?;
+                    true
+                }
+                AxVCpuExitReason::SysRegRead { addr, reg } => {
+                    let val = self.get_devices().handle_sys_reg_read(
+                        *addr,
+                        // Generally speaking, the width of system register is fixed and needless to be specified.
+                        // AccessWidth::Qword here is just a placeholder, may be changed in the future.
+                        AccessWidth::Qword,
+                        DeviceRWContext::new(vcpu_id),
+                    )?;
+                    vcpu.set_gpr(*reg, val);
+                    true
+                }
+                AxVCpuExitReason::SysRegWrite { addr, value } => {
+                    self.get_devices().handle_sys_reg_write(
+                        *addr,
+                        AccessWidth::Qword,
+                        *value as usize,
+                        DeviceRWContext::new(vcpu_id),
+                    )?;
                     true
                 }
                 AxVCpuExitReason::NestedPageFault { addr, access_flags } => self
@@ -299,7 +337,56 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(exit_reason)
     }
 
-    pub fn inject_interrupt_to_vcpu(&self) -> AxResult {
+    /// Injects an interrupt to the vCPU.
+    pub fn inject_interrupt_to_vcpu(
+        &self,
+        targets: CpuMask<TEMP_MAX_VCPU_NUM>,
+        irq: usize,
+    ) -> AxResult {
+        // Check if the current running vm is self.
+        //
+        // It is not supported to inject interrupt to a vcpu in another VM yet.
+        //
+        // It may be supported in the future, as a essential feature for cross-VM communication.
+        if H::current_vm_id() != self.id() {
+            panic!("Injecting interrupt to a vcpu in another VM is not supported");
+        }
+
+        let current_vcpu_id = H::current_vcpu_id();
+        let current_pcpu_id = H::current_pcpu_id();
+
+        for target_vcpu in &targets {
+            let target_vcpu = self.vcpu(target_vcpu).ok_or_else(|| {
+                ax_err_type!(InvalidInput, format!("Invalid vcpu_id {}", target_vcpu))
+            })?;
+
+            if target_vcpu.id() == current_vcpu_id {
+                target_vcpu.inject_interrupt(irq)?;
+            } else {
+                let target_pcpu_id = self.where_is_vcpu(&target_vcpu)?;
+
+                if target_pcpu_id == current_pcpu_id {
+                    target_vcpu.inject_interrupt(irq)?; // <- Maybe another method to queue the interrupt?
+                } else {
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Returns on which physical CPU the vCPU is running/waiting/queueing.
+    pub fn where_is_vcpu(&self, _vcpu: &AxVCpuRef<U>) -> AxResult<usize> {
+        todo!()
+    }
+
+    /// Injects an interrupt to a vCPU which is on another physical CPU.
+    pub fn inject_interrupt_to_vcpu_remotely(
+        &self,
+        _vcpu_id: usize,
+        _irq: usize,
+        _pcpu_id: usize,
+    ) -> AxResult {
         todo!()
     }
 }
