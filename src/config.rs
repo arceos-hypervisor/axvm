@@ -5,7 +5,6 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use axaddrspace::GuestPhysAddr;
-use axerrno::AxResult;
 
 pub use axvmconfig::{
     AxVMCrateConfig, EmulatedDeviceConfig, PassThroughDeviceConfig, VMType, VmMemConfig,
