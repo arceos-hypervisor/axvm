@@ -16,8 +16,8 @@ spin = "0.9"
 axerrno = "0.1.0"
 # kspin = "0.1.0"
 memory_addr = "0.3.1"
-page_table_entry = { version = "0.4.1", features = ["arm-el2"] }
-page_table_multiarch = "0.4.1"
+page_table_entry = { version = "0.4.2", features = ["arm-el2"] }
+page_table_multiarch = "0.4.2"
 percpu = { version = "0.1.4", features = ["arm-el2"] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
@@ -27,7 +27,7 @@ axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch =
 axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86_vcpu = { git = "https://github.com/arceos-hypervisor/x86_vcpu.git" }
+x86_vcpu = { git = "https://github.com/arceos-hypervisor/x86_vcpu.git", branch = "fix_ci" }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 riscv_vcpu = { git = "https://github.com/arceos-hypervisor/riscv_vcpu.git" }
