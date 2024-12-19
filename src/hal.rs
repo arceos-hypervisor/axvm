@@ -10,4 +10,13 @@ pub trait AxVMHal: Sized {
 
     /// Current time in nanoseconds.
     fn current_time_nanos() -> u64;
+
+    /// Current VM ID.
+    fn current_vm_id() -> usize;
+
+    /// Current Virtual CPU ID.
+    fn current_vcpu_id() -> usize;
+
+    /// Current Physical CPU ID.
+    fn current_pcpu_id() -> usize;
 }
