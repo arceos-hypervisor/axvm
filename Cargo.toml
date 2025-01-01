@@ -1,7 +1,7 @@
 [package]
 name = "axvm"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [features]
 default = ["vmx"]
@@ -16,21 +16,30 @@ spin = "0.9"
 axerrno = "0.1.0"
 # kspin = "0.1.0"
 memory_addr = "0.3.1"
-page_table_entry = { version = "0.4.2", features = ["arm-el2"] }
-page_table_multiarch = "0.4.2"
+page_table_entry = { version = "0.5", features = ["arm-el2"] }
+page_table_multiarch = "0.5"
 percpu = { version = "0.1.4", features = ["arm-el2"] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
-axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
-axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git" }
+axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "update_toolchain" }
+axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git", branch = "update_toolchain" }
+axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "update_toolchain" }
 axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86_vcpu = { git = "https://github.com/arceos-hypervisor/x86_vcpu.git" }
+x86_vcpu = { git = "https://github.com/arceos-hypervisor/x86_vcpu.git", branch = "edition2024" }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
-riscv_vcpu = { git = "https://github.com/arceos-hypervisor/riscv_vcpu.git" }
+riscv_vcpu = { git = "https://github.com/arceos-hypervisor/riscv_vcpu.git", branch = "edition2024" }
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
-arm_vcpu = { git = "https://github.com/arceos-hypervisor/arm_vcpu.git" }
+arm_vcpu = { git = "https://github.com/arceos-hypervisor/arm_vcpu.git", branch = "edition2024" }
+
+# [patch."https://github.com/arceos-hypervisor/axvcpu.git"]
+# axvcpu = { path = "../axvcpu" }
+
+# [patch."https://github.com/arceos-hypervisor/axaddrspace.git"]
+# axaddrspace = { path = "../axaddrspace" }
+
+# [patch."https://github.com/arceos-hypervisor/x86_vcpu.git"]
+# x86_vcpu = { path = "../x86_vcpu" }
