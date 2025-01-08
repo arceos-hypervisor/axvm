@@ -22,7 +22,9 @@ pub trait AxVMHal: Sized {
     fn current_pcpu_id() -> usize;
 
     /// Get the Physical CPU ID where the specified VCPU of the current VM resides.
-    fn vcpu_resides_on(vcpu_id: usize) -> usize;
+    /// 
+    /// Returns an error if the VCPU is not found.
+    fn vcpu_resides_on(vcpu_id: usize) -> AxResult<usize>;
 
     /// Inject an IRQ to the specified VCPU.
     /// 
