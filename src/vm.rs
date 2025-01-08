@@ -352,41 +352,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             panic!("Injecting interrupt to a vcpu in another VM is not supported");
         }
 
-        let current_vcpu_id = H::current_vcpu_id();
-        let current_pcpu_id = H::current_pcpu_id();
-
         for target_vcpu in &targets {
-            let target_vcpu = self.vcpu(target_vcpu).ok_or_else(|| {
-                ax_err_type!(InvalidInput, format!("Invalid vcpu_id {}", target_vcpu))
-            })?;
-
-            if target_vcpu.id() == current_vcpu_id {
-                target_vcpu.inject_interrupt(irq)?;
-            } else {
-                let target_pcpu_id = self.where_is_vcpu(&target_vcpu)?;
-
-                if target_pcpu_id == current_pcpu_id {
-                    target_vcpu.inject_interrupt(irq)?; // <- Maybe another method to queue the interrupt?
-                } else {
-                }
-            }
+            H::inject_irq_to_vcpu(target_vcpu, irq)?;
         }
 
         Ok(())
-    }
-
-    /// Returns on which physical CPU the vCPU is running/waiting/queueing.
-    pub fn where_is_vcpu(&self, _vcpu: &AxVCpuRef<U>) -> AxResult<usize> {
-        todo!()
-    }
-
-    /// Injects an interrupt to a vCPU which is on another physical CPU.
-    pub fn inject_interrupt_to_vcpu_remotely(
-        &self,
-        _vcpu_id: usize,
-        _irq: usize,
-        _pcpu_id: usize,
-    ) -> AxResult {
-        todo!()
     }
 }

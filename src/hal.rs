@@ -1,4 +1,5 @@
 use axaddrspace::{HostPhysAddr, HostVirtAddr};
+use axerrno::AxResult;
 
 /// The interfaces which the underlying software (kernel or hypervisor) must implement.
 pub trait AxVMHal: Sized {
@@ -19,4 +20,15 @@ pub trait AxVMHal: Sized {
 
     /// Current Physical CPU ID.
     fn current_pcpu_id() -> usize;
+
+    /// Get the Physical CPU ID where the specified VCPU of the current VM resides.
+    fn vcpu_resides_on(vcpu_id: usize) -> usize;
+
+    /// Inject an IRQ to the specified VCPU.
+    /// 
+    /// This method should find the physical CPU where the specified VCPU resides and inject the IRQ
+    /// to it on that physical CPU with [`axvcpu::AxVCpu::inject_interrupt`].
+    /// 
+    /// Returns an error if the VCPU is not found.
+    fn inject_irq_to_vcpu(vcpu_id: usize, irq: usize) -> AxResult;
 }
