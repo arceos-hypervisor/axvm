@@ -32,7 +32,7 @@ pub trait AxVMHal: Sized {
     /// Get the Physical CPU ID where the specified VCPU of the current VM resides.
     /// 
     /// Returns an error if the VCPU is not found.
-    fn vcpu_resides_on(vcpu_id: usize) -> AxResult<usize>;
+    fn vcpu_resides_on(vm_id: usize, vcpu_id: usize) -> AxResult<usize>;
 
     /// Inject an IRQ to the specified VCPU.
     /// 
@@ -40,5 +40,5 @@ pub trait AxVMHal: Sized {
     /// to it on that physical CPU with [`axvcpu::AxVCpu::inject_interrupt`].
     /// 
     /// Returns an error if the VCPU is not found.
-    fn inject_irq_to_vcpu(vcpu_id: usize, irq: usize) -> AxResult;
+    fn inject_irq_to_vcpu(vm_id: usize, vcpu_id: usize, irq: usize) -> AxResult;
 }
