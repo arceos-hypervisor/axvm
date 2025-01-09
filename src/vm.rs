@@ -390,6 +390,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         targets: CpuMask<TEMP_MAX_VCPU_NUM>,
         irq: usize,
     ) -> AxResult {
+        let vm_id = self.id();
         // Check if the current running vm is self.
         //
         // It is not supported to inject interrupt to a vcpu in another VM yet.
@@ -400,7 +401,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         }
 
         for target_vcpu in &targets {
-            H::inject_irq_to_vcpu(target_vcpu, irq)?;
+            H::inject_irq_to_vcpu(vm_id, target_vcpu, irq)?;
         }
 
         Ok(())
