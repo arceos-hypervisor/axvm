@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use axerrno::{AxResult, ax_err, ax_err_type};
+use axerrno::{ax_err, ax_err_type, AxResult};
 use spin::Mutex;
 
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
@@ -12,8 +12,8 @@ use axdevice::{AxVmDeviceConfig, AxVmDevices};
 use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
 
 use crate::config::{AxVMConfig, VmMemMappingType};
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
-use crate::{AxVMHal, has_hardware_support};
+use crate::vcpu::{AxArchEmuRegs, AxArchVCpuImpl, AxVCpuCreateConfig};
+use crate::{has_hardware_support, AxVMHal};
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -168,7 +168,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
                 )?;
             }
-
+            info!("skedfghkshdgfkd");
             let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
                 emu_configs: config.emu_devices().to_vec(),
             });
@@ -306,15 +306,21 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     reg,
                     reg_width: _,
                 } => {
-                    let val = self
-                        .get_devices()
-                        .handle_mmio_read(*addr, (*width).into())?;
+                    let val = self.get_devices().handle_mmio_read(
+                        *addr,
+                        (*width).into(),
+                        vcpu.as_ref(),
+                    )?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
-                    self.get_devices()
-                        .handle_mmio_write(*addr, (*width).into(), *data as usize);
+                    self.get_devices().handle_mmio_write(
+                        *addr,
+                        (*width).into(),
+                        *data as usize,
+                        vcpu.as_ref(),
+                    );
                     true
                 }
                 AxVCpuExitReason::IoRead { port: _, width: _ } => true,
@@ -323,6 +329,22 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     width: _,
                     data: _,
                 } => true,
+                AxVCpuExitReason::SysRegRead { addr, reg } => {
+                    AxArchEmuRegs::<U>::emu_register_handle_read(
+                        (*addr).into(),
+                        *reg,
+                        vcpu.clone(),
+                    );
+                    true
+                }
+                AxVCpuExitReason::SysRegWrite { addr, value } => {
+                    AxArchEmuRegs::<U>::emu_register_handle_write(
+                        (*addr).into(),
+                        *value,
+                        vcpu.clone(),
+                    );
+                    true
+                }
                 AxVCpuExitReason::NestedPageFault { addr, access_flags } => self
                     .inner_mut
                     .address_space
