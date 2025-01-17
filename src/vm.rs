@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use axerrno::{AxResult, ax_err, ax_err_type};
+use axerrno::{ax_err, ax_err_type, AxResult};
 use spin::Mutex;
 
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
@@ -12,8 +12,8 @@ use axdevice::{AxVmDeviceConfig, AxVmDevices};
 use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
 
 use crate::config::{AxVMConfig, VmMemMappingType};
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
-use crate::{AxVMHal, has_hardware_support};
+use crate::vcpu::{AxArchEmuRegs, AxArchVCpuImpl, AxVCpuCreateConfig};
+use crate::{has_hardware_support, AxVMHal};
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -323,6 +323,22 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     width: _,
                     data: _,
                 } => true,
+                AxVCpuExitReason::SysRegRead { addr, reg } => {
+                    let exit = AxArchEmuRegs::<U>::emu_register_handle_read(
+                        (*addr).into(),
+                        *reg,
+                        vcpu.clone(),
+                    );
+                    break AxVCpuExitReason::VcpuFuncCall(exit);
+                }
+                AxVCpuExitReason::SysRegWrite { addr, value } => {
+                    let exit = AxArchEmuRegs::<U>::emu_register_handle_write(
+                        (*addr).into(),
+                        *value,
+                        vcpu.clone(),
+                    );
+                    break AxVCpuExitReason::VcpuFuncCall(exit);
+                }
                 AxVCpuExitReason::NestedPageFault { addr, access_flags } => self
                     .inner_mut
                     .address_space
