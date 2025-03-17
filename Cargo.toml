@@ -23,7 +23,7 @@ percpu = { version = "0.1.4", features = ["arm-el2"] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "inject_interrupt" }
-axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git", branch = "inject_interrupt" }
+axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git", branch = "api" }
 axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "inject_interrupt" }
 axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git", branch = "inject_interrupt" }
 axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", default-features = false }
@@ -36,3 +36,15 @@ riscv_vcpu = { git = "https://github.com/arceos-hypervisor/riscv_vcpu.git" }
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 arm_vcpu = { git = "https://github.com/arceos-hypervisor/arm_vcpu.git" }
+
+[patch."https://github.com/arceos-hypervisor/axvcpu.git"]
+axvcpu = { path = "../axvcpu" }
+
+[patch."https://github.com/arceos-hypervisor/axdevice.git"]
+axdevice = { path = "../axdevice" }
+
+[patch."https://github.com/arceos-hypervisor/axdevice_crates.git"]
+axdevice_base = { path = "../axdevice_crates/axdevice_base" }
+
+[patch."https://github.com/arceos-hypervisor/x86_vcpu.git"]
+x86_vcpu = { path = "../x86_vcpu" }
