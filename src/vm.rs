@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::string::String;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use axerrno::{AxResult, ax_err, ax_err_type};
@@ -33,6 +34,7 @@ struct AxVMInnerConst<U: AxVCpuHal> {
     config: AxVMConfig,
     vcpu_list: Box<[AxVCpuRef<U>]>,
     devices: AxVmDevices,
+    is_host_vm: bool,
 }
 
 unsafe impl<U: AxVCpuHal> Send for AxVMInnerConst<U> {}
@@ -180,6 +182,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     config,
                     vcpu_list: vcpu_list.into_boxed_slice(),
                     devices,
+                    is_host_vm: false,
                 },
                 inner_mut: AxVMInnerMut {
                     address_space: Mutex::new(address_space),
@@ -214,6 +217,17 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         self.inner_const.id
     }
 
+    /// Returns the VM name.
+    /// The name is used for logging and debugging purposes.
+    /// It is not required to be unique.
+    /// The name is set in the VM configuration.
+    /// If the name is not set in the configuration, the name is an empty string.
+    /// The name is immutable.
+    #[inline]
+    pub fn name(&self) -> String {
+        self.inner_const.config.name()
+    }
+
     /// Retrieves the vCPU corresponding to the given vcpu_id for the VM.
     /// Returns None if the vCPU does not exist.
     #[inline]
@@ -236,6 +250,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     /// Returns the base address of the two-stage address translation page table for the VM.
     pub fn ept_root(&self) -> HostPhysAddr {
         self.inner_mut.address_space.lock().page_table_root()
+    }
+
+    /// Returns if this VM is a host VM.
+    #[inline]
+    pub const fn is_host_vm(&self) -> bool {
+        self.inner_const.is_host_vm
     }
 
     /// Returns guest VM image load region in `Vec<&'static mut [u8]>`,
@@ -337,5 +357,106 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         vcpu.unbind()?;
         Ok(exit_reason)
+    }
+}
+
+use x86_vcpu::LinuxContext;
+
+impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
+    pub fn new_host(config: AxVMConfig, host_cpus: &[LinuxContext]) -> AxResult<AxVMRef<H, U>> {
+        let result = Arc::new({
+            let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
+
+            // Create VCpus.
+            let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
+
+            for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
+                vcpu_list.push(Arc::new(VCpu::new_host(
+                    vcpu_id,
+                    host_cpus[vcpu_id].clone(),
+                    phys_cpu_set,
+                )?));
+            }
+
+            // Set up Memory regions.
+            let mut address_space =
+                AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
+            for mem_region in config.memory_regions() {
+                let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
+                    ax_err_type!(
+                        InvalidInput,
+                        format!("Illegal flags {:?}", mem_region.flags)
+                    )
+                })?;
+
+                // Check mapping flags.
+                if mapping_flags.contains(MappingFlags::DEVICE) {
+                    warn!(
+                        "Do not include DEVICE flag in memory region flags, it should be configured in pass_through_devices"
+                    );
+                    continue;
+                }
+
+                info!(
+                    "Setting up memory region: [{:#x}~{:#x}] {:?}",
+                    mem_region.gpa,
+                    mem_region.gpa + mem_region.size,
+                    mapping_flags
+                );
+
+                // Handle ram region.
+                match mem_region.map_type {
+                    VmMemMappingType::MapIentical => {
+                        address_space.map_linear(
+                            GuestPhysAddr::from(mem_region.gpa),
+                            HostPhysAddr::from(mem_region.gpa),
+                            mem_region.size,
+                            mapping_flags,
+                        )?;
+                    }
+                    VmMemMappingType::MapAlloc => {
+                        warn!("MapAlloc is not supported for host VM");
+                    }
+                }
+            }
+
+            let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
+                emu_configs: config.emu_devices().to_vec(),
+            });
+
+            Self {
+                running: AtomicBool::new(false),
+                inner_const: AxVMInnerConst {
+                    id: 0,
+                    config,
+                    vcpu_list: vcpu_list.into_boxed_slice(),
+                    devices,
+                    is_host_vm: true,
+                },
+                inner_mut: AxVMInnerMut {
+                    address_space: Mutex::new(address_space),
+                    _marker: core::marker::PhantomData,
+                },
+            }
+        });
+
+        info!("VM created: id={}", result.id());
+
+        // Setup VCpus.
+        for vcpu in result.vcpu_list() {
+            let entry = if vcpu.id() == 0 {
+                result.inner_const.config.bsp_entry()
+            } else {
+                result.inner_const.config.ap_entry()
+            };
+            vcpu.setup(
+                entry,
+                result.ept_root(),
+                <AxArchVCpuImpl<U> as AxArchVCpu>::SetupConfig::default(),
+            )?;
+        }
+        info!("VM setup: id={}", result.id());
+
+        Ok(result)
     }
 }

@@ -87,6 +87,28 @@ impl From<AxVMCrateConfig> for AxVMConfig {
 }
 
 impl AxVMConfig {
+    pub fn new_host(id: usize, name: String, cpu_num: usize) -> Self {
+        Self {
+            id,
+            name,
+            vm_type: VMType::VMTHostVM,
+            cpu_num,
+            phys_cpu_ids: None,
+            phys_cpu_sets: None,
+            cpu_config: AxVCpuConfig::default(),
+            image_config: VMImageConfig::default(),
+            memory_regions: Vec::new(),
+            emu_devices: Vec::new(),
+            pass_through_devices: Vec::new(),
+        }
+    }
+
+    pub fn append_memory_region(&mut self, region: VmMemConfig) {
+        self.memory_regions.push(region);
+    }
+}
+
+impl AxVMConfig {
     /// Returns VM id.
     pub fn id(&self) -> usize {
         self.id
