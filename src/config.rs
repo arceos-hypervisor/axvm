@@ -97,6 +97,11 @@ impl AxVMConfig {
         self.name.clone()
     }
 
+    /// Returns cpu number.
+    pub fn cpu_num(&self) -> usize {
+        self.cpu_num
+    }
+
     /// Returns vCpu id list and its corresponding pCpu affinity list, as well as its physical id.
     /// If the pCpu affinity is None, it means the vCpu will be allocated to any available pCpu randomly.
     /// if the pCPU id is not provided, the vCpu's physical id will be set as vCpu id.

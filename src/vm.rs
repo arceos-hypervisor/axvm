@@ -238,6 +238,11 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         self.inner_mut.address_space.lock().page_table_root()
     }
 
+    /// Returns a reference to the VM's configuration.
+    pub fn get_vm_config(&self) -> &AxVMConfig {
+        &self.inner_const.config
+    }
+
     /// Returns guest VM image load region in `Vec<&'static mut [u8]>`,
     /// according to the given `image_load_gpa` and `image_size.
     /// `Vec<&'static mut [u8]>` is a series of (HVA) address segments,
