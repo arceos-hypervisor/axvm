@@ -1,8 +1,8 @@
 use alloc::boxed::Box;
 use alloc::format;
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use alloc::string::String;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use axerrno::{AxResult, ax_err, ax_err_type};
@@ -278,6 +278,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(image_load_hva)
     }
 
+    /// Translates a guest physical address to a host physical address.
+    /// Returns None if the translation fails or the address is not mapped.
+    pub fn guest_phys_to_host_phys(&self, gpa: GuestPhysAddr) -> Option<HostPhysAddr> {
+        self.inner_mut.address_space.lock().translate(gpa)
+    }
+
     /// Returns if the VM is running.
     pub fn running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
@@ -371,6 +377,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
 
             for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
+                debug!(
+                    "Creating vCPU[{}] {:x?}\nLinuxContext: {:#x?}",
+                    vcpu_id, phys_cpu_set, host_cpus[vcpu_id]
+                );
                 vcpu_list.push(Arc::new(VCpu::new_host(
                     vcpu_id,
                     host_cpus[vcpu_id].clone(),
@@ -388,14 +398,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         format!("Illegal flags {:?}", mem_region.flags)
                     )
                 })?;
-
-                // Check mapping flags.
-                if mapping_flags.contains(MappingFlags::DEVICE) {
-                    warn!(
-                        "Do not include DEVICE flag in memory region flags, it should be configured in pass_through_devices"
-                    );
-                    continue;
-                }
 
                 info!(
                     "Setting up memory region: [{:#x}~{:#x}] {:?}",
