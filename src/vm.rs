@@ -8,10 +8,8 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use axerrno::{AxResult, ax_err, ax_err_type};
 use spin::Mutex;
 
-use axaddrspace::device::{self, AccessWidth};
-use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
+use axaddrspace::{device::AccessWidth, AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
-use axdevice_base::DeviceRWContext;
 use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use cpumask::CpuMask;
 
@@ -346,7 +344,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     let val = self.get_devices().handle_mmio_read(
                         *addr,
                         (*width).into(),
-                        DeviceRWContext::new(vcpu_id),
                     )?;
                     vcpu.set_gpr(*reg, val);
                     true
@@ -356,7 +353,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         *addr,
                         (*width).into(),
                         *data as usize,
-                        DeviceRWContext::new(vcpu_id),
                     )?;
                     true
                 }
@@ -364,7 +360,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     let val = self.get_devices().handle_port_read(
                         *port,
                         *width,
-                        DeviceRWContext::new(vcpu_id),
                     )?;
                     vcpu.set_gpr(0, val); // The target is always eax/ax/al, todo: handle access_width correctly
 
@@ -375,7 +370,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         *port,
                         *width,
                         *data as usize,
-                        DeviceRWContext::new(vcpu_id),
                     )?;
                     true
                 }
@@ -385,7 +379,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         // Generally speaking, the width of system register is fixed and needless to be specified.
                         // AccessWidth::Qword here is just a placeholder, may be changed in the future.
                         AccessWidth::Qword,
-                        DeviceRWContext::new(vcpu_id),
                     )?;
                     vcpu.set_gpr(*reg, val);
                     true
@@ -395,7 +388,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         *addr,
                         AccessWidth::Qword,
                         *value as usize,
-                        DeviceRWContext::new(vcpu_id),
                     )?;
                     true
                 }
@@ -436,48 +428,5 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         }
 
         Ok(())
-    }
-}
-
-impl<H: AxVMHal + 'static, U: AxVCpuHal + 'static> AxVM<H, U> {
-    pub fn set_devices_interrupt_injector(self: &Arc<Self>) {
-        // let myself = self.clone();
-
-        // self.inner_const.devices.set_interrupt_injector(
-        //     move |targets: CpuMask<{64}>, irq: usize| {
-        //         // It's TOO UGLY!!!
-        //         // Solution (possibly): remove the stupid `InterruptInjector`
-
-        //         // myself.inject_interrupt_to_vcpu(targets, irq)
-        //         Ok(())
-        //     },
-        // );
-
-        // The above code mysteriously fails to compile due to a more weird and astonishing compiler
-        // internal error, to be investigated in the future. We use the following workaround instead.
-
-        for dev in self.inner_const.devices.iter_mmio_dev() {
-            let myself = self.clone();
-
-            dev.set_interrupt_injector(Box::new(move |targets, irq| {
-                myself.inject_interrupt_to_vcpu(targets, irq)
-            }));
-        }
-
-        for dev in self.inner_const.devices.iter_sys_reg_dev() {
-            let myself = self.clone();
-
-            dev.set_interrupt_injector(Box::new(move |targets, irq| {
-                myself.inject_interrupt_to_vcpu(targets, irq)
-            }));
-        }
-
-        for dev in self.inner_const.devices.iter_port_dev() {
-            let myself = self.clone();
-
-            dev.set_interrupt_injector(Box::new(move |targets, irq| {
-                myself.inject_interrupt_to_vcpu(targets, irq)
-            }));
-        }
     }
 }
