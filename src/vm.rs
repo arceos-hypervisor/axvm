@@ -377,10 +377,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
 
             for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
-                debug!(
-                    "Creating vCPU[{}] {:x?}\nLinuxContext: {:#x?}",
-                    vcpu_id, phys_cpu_set, host_cpus[vcpu_id]
-                );
+                debug!("Creating host vCPU[{}] {:x?}", vcpu_id, phys_cpu_set,);
                 vcpu_list.push(Arc::new(VCpu::new_host(
                     vcpu_id,
                     host_cpus[vcpu_id].clone(),
@@ -400,7 +397,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 })?;
 
                 info!(
-                    "Setting up memory region: [{:#x}~{:#x}] {:?}",
+                    "Setting up host VM memory region: [{:#x}~{:#x}] {:?}",
                     mem_region.gpa,
                     mem_region.gpa + mem_region.size,
                     mapping_flags
@@ -442,7 +439,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             }
         });
 
-        info!("VM created: id={}", result.id());
+        info!("Host VM created: id={}", result.id());
 
         // Setup VCpus.
         for vcpu in result.vcpu_list() {
@@ -457,7 +454,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 <AxArchVCpuImpl<U> as AxArchVCpu>::SetupConfig::default(),
             )?;
         }
-        info!("VM setup: id={}", result.id());
+        info!("Host VM setup: id={}", result.id());
 
         Ok(result)
     }
