@@ -14,7 +14,7 @@ use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, VmMemMappingType};
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
+use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig, get_sysreg_device};
 use crate::{AxVMHal, has_hardware_support};
 
 const VM_ASPACE_BASE: usize = 0x0;
@@ -170,9 +170,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         //     MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
         // );
 
-        let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
+        let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
             emu_configs: config.emu_devices().to_vec(),
         });
+        for sysreg in get_sysreg_device() {
+            devices.add_sys_reg_dev(sysreg);
+        }
         Ok(Self {
             running: AtomicBool::new(false),
             inner_const: AxVMInnerConst {
