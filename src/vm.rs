@@ -8,7 +8,9 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use axerrno::{AxResult, ax_err, ax_err_type};
 use spin::Mutex;
 
+use axaddrspace::npt::{EPTEntry, EPTMetadata, NestedPageTable};
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
+
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
 use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
 
@@ -42,7 +44,7 @@ unsafe impl<U: AxVCpuHal> Sync for AxVMInnerConst<U> {}
 
 struct AxVMInnerMut<H: AxVMHal> {
     // Todo: use more efficient lock.
-    address_space: Mutex<AddrSpace<H::PagingHandler>>,
+    address_space: Mutex<AddrSpace<EPTMetadata, EPTEntry, H::PagingHandler>>,
     _marker: core::marker::PhantomData<H>,
 }
 
