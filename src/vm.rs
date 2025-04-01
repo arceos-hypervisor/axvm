@@ -2,14 +2,16 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+// use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use axerrno::{AxResult, ax_err, ax_err_type};
 use spin::Mutex;
 
-use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
+use axaddrspace::{device::AccessWidth, AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
 use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
+use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, VmMemMappingType};
 use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
@@ -44,6 +46,8 @@ struct AxVMInnerMut<H: AxVMHal> {
     _marker: core::marker::PhantomData<H>,
 }
 
+const TEMP_MAX_VCPU_NUM: usize = 64;
+
 /// A Virtual Machine.
 pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
     running: AtomicBool,
@@ -52,142 +56,173 @@ pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
 }
 
 impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
+    fn new_without_setup(config: AxVMConfig) -> AxResult<AxVM<H, U>> {
+        let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
+        let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
+        for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
+            #[cfg(target_arch = "aarch64")]
+            let arch_config = AxVCpuCreateConfig {
+                mpidr_el1: _pcpu_id as _,
+                dtb_addr: config
+                    .image_config()
+                    .dtb_load_gpa
+                    .unwrap_or_default()
+                    .as_usize(),
+            };
+            #[cfg(target_arch = "riscv64")]
+            let arch_config = AxVCpuCreateConfig {
+                hart_id: vcpu_id as _,
+                dtb_addr: config
+                    .image_config()
+                    .dtb_load_gpa
+                    .unwrap_or(GuestPhysAddr::from_usize(0x9000_0000)),
+            };
+            #[cfg(target_arch = "x86_64")]
+            let arch_config = AxVCpuCreateConfig::default();
+
+            vcpu_list.push(Arc::new(VCpu::new(
+                vcpu_id,
+                0, // Currently not used.
+                phys_cpu_set,
+                arch_config,
+            )?));
+        }
+        let mut address_space =
+            AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
+        for mem_region in config.memory_regions() {
+            let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
+                ax_err_type!(
+                    InvalidInput,
+                    format!("Illegal flags {:?}", mem_region.flags)
+                )
+            })?;
+
+            // Check mapping flags.
+            if mapping_flags.contains(MappingFlags::DEVICE) {
+                warn!(
+                    "Do not include DEVICE flag in memory region flags, it should be configured in pass_through_devices"
+                );
+                continue;
+            }
+
+            info!(
+                "Setting up memory region: [{:#x}~{:#x}] {:?}",
+                mem_region.gpa,
+                mem_region.gpa + mem_region.size,
+                mapping_flags
+            );
+
+            // Handle ram region.
+            match mem_region.map_type {
+                VmMemMappingType::MapIentical => {
+                    if H::alloc_memory_region_at(
+                        HostPhysAddr::from(mem_region.gpa),
+                        mem_region.size,
+                    ) {
+                        address_space.map_linear(
+                            GuestPhysAddr::from(mem_region.gpa),
+                            HostPhysAddr::from(mem_region.gpa),
+                            mem_region.size,
+                            mapping_flags,
+                        )?;
+                    } else {
+                        warn!(
+                            "Failed to allocate memory region at {:#x} for VM [{}]",
+                            mem_region.gpa,
+                            config.id()
+                        );
+                    }
+                }
+                VmMemMappingType::MapAlloc => {
+                    // Note: currently we use `map_alloc`,
+                    // which allocates real physical memory in units of physical page frames,
+                    // which may not be contiguous!!!
+                    address_space.map_alloc(
+                        GuestPhysAddr::from(mem_region.gpa),
+                        mem_region.size,
+                        mapping_flags,
+                        true,
+                    )?;
+                }
+            }
+        }
+        for pt_device in config.pass_through_devices() {
+            info!(
+                "Setting up passthrough device memory region: [{:#x}~{:#x}] -> [{:#x}~{:#x}]",
+                pt_device.base_gpa,
+                pt_device.base_gpa + pt_device.length,
+                pt_device.base_hpa,
+                pt_device.base_hpa + pt_device.length
+            );
+
+            address_space.map_linear(
+                GuestPhysAddr::from(pt_device.base_gpa),
+                HostPhysAddr::from(pt_device.base_hpa),
+                pt_device.length,
+                MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
+            )?;
+        }
+        // TODO: remve this
+        // address_space.map_linear(
+        //     GuestPhysAddr::from_usize(0xfee0_0000), 
+        //     start_paddr, 
+        //     size,
+        //     MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
+        // );
+
+        let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
+            emu_configs: config.emu_devices().to_vec(),
+        });
+        Ok(Self {
+            running: AtomicBool::new(false),
+            inner_const: AxVMInnerConst {
+                id: config.id(),
+                config,
+                vcpu_list: vcpu_list.into_boxed_slice(),
+                devices,
+            },
+            inner_mut: AxVMInnerMut {
+                address_space: Mutex::new(address_space),
+                _marker: core::marker::PhantomData,
+            },
+        })
+    }
+
     /// Creates a new VM with the given configuration.
     /// Returns an error if the configuration is invalid.
     /// The VM is not started until `boot` is called.
     pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>> {
-        let result = Arc::new({
-            let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
+        let result = Arc::new(Self::new_without_setup(config)?);
 
-            // Create VCpus.
-            let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
+        info!("VM created: id={}", result.id());
 
-            for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
-                #[cfg(target_arch = "aarch64")]
-                let arch_config = AxVCpuCreateConfig {
-                    mpidr_el1: _pcpu_id as _,
-                    dtb_addr: config
-                        .image_config()
-                        .dtb_load_gpa
-                        .unwrap_or_default()
-                        .as_usize(),
-                };
-                #[cfg(target_arch = "riscv64")]
-                let arch_config = AxVCpuCreateConfig {
-                    hart_id: vcpu_id as _,
-                    dtb_addr: config
-                        .image_config()
-                        .dtb_load_gpa
-                        .unwrap_or(GuestPhysAddr::from_usize(0x9000_0000)),
-                };
-                #[cfg(target_arch = "x86_64")]
-                let arch_config = AxVCpuCreateConfig::default();
+        // Setup VCpus.
+        for vcpu in result.vcpu_list() {
+            let entry = if vcpu.id() == 0 {
+                result.inner_const.config.bsp_entry()
+            } else {
+                result.inner_const.config.ap_entry()
+            };
+            vcpu.setup(
+                entry,
+                result.ept_root(),
+                <AxArchVCpuImpl<U> as AxArchVCpu>::SetupConfig::default(),
+            )?;
+        }
+        info!("VM setup: id={}", result.id());
 
-                vcpu_list.push(Arc::new(VCpu::new(
-                    vcpu_id,
-                    0, // Currently not used.
-                    phys_cpu_set,
-                    arch_config,
-                )?));
-            }
+        Ok(result)
+    }
 
-            // Set up Memory regions.
-            let mut address_space =
-                AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
-            for mem_region in config.memory_regions() {
-                let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
-                    ax_err_type!(
-                        InvalidInput,
-                        format!("Illegal flags {:?}", mem_region.flags)
-                    )
-                })?;
+    pub fn temp_new_with_device_adder(
+        config: AxVMConfig,
+        device_adder: impl FnOnce(&mut AxVmDevices),
+    ) -> AxResult<AxVMRef<H, U>> {
+        let mut result = Self::new_without_setup(config)?;
 
-                // Check mapping flags.
-                if mapping_flags.contains(MappingFlags::DEVICE) {
-                    warn!(
-                        "Do not include DEVICE flag in memory region flags, it should be configured in pass_through_devices"
-                    );
-                    continue;
-                }
+        device_adder(&mut result.inner_const.devices);
 
-                info!(
-                    "Setting up memory region: [{:#x}~{:#x}] {:?}",
-                    mem_region.gpa,
-                    mem_region.gpa + mem_region.size,
-                    mapping_flags
-                );
-
-                // Handle ram region.
-                match mem_region.map_type {
-                    VmMemMappingType::MapIentical => {
-                        if H::alloc_memory_region_at(
-                            HostPhysAddr::from(mem_region.gpa),
-                            mem_region.size,
-                        ) {
-                            address_space.map_linear(
-                                GuestPhysAddr::from(mem_region.gpa),
-                                HostPhysAddr::from(mem_region.gpa),
-                                mem_region.size,
-                                mapping_flags,
-                            )?;
-                        } else {
-                            warn!(
-                                "Failed to allocate memory region at {:#x} for VM [{}]",
-                                mem_region.gpa,
-                                config.id()
-                            );
-                        }
-                    }
-                    VmMemMappingType::MapAlloc => {
-                        // Note: currently we use `map_alloc`,
-                        // which allocates real physical memory in units of physical page frames,
-                        // which may not be contiguous!!!
-                        address_space.map_alloc(
-                            GuestPhysAddr::from(mem_region.gpa),
-                            mem_region.size,
-                            mapping_flags,
-                            true,
-                        )?;
-                    }
-                }
-            }
-
-            for pt_device in config.pass_through_devices() {
-                info!(
-                    "Setting up passthrough device memory region: [{:#x}~{:#x}] -> [{:#x}~{:#x}]",
-                    pt_device.base_gpa,
-                    pt_device.base_gpa + pt_device.length,
-                    pt_device.base_hpa,
-                    pt_device.base_hpa + pt_device.length
-                );
-
-                address_space.map_linear(
-                    GuestPhysAddr::from(pt_device.base_gpa),
-                    HostPhysAddr::from(pt_device.base_hpa),
-                    pt_device.length,
-                    MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
-                )?;
-            }
-
-            let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
-                emu_configs: config.emu_devices().to_vec(),
-            });
-
-            Self {
-                running: AtomicBool::new(false),
-                inner_const: AxVMInnerConst {
-                    id: config.id(),
-                    config,
-                    vcpu_list: vcpu_list.into_boxed_slice(),
-                    devices,
-                },
-                inner_mut: AxVMInnerMut {
-                    address_space: Mutex::new(address_space),
-                    _marker: core::marker::PhantomData,
-                },
-            }
-        });
-
+        let result = Arc::new(result);
         info!("VM created: id={}", result.id());
 
         // Setup VCpus.
@@ -306,23 +341,56 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     reg,
                     reg_width: _,
                 } => {
-                    let val = self
-                        .get_devices()
-                        .handle_mmio_read(*addr, (*width).into())?;
+                    let val = self.get_devices().handle_mmio_read(
+                        *addr,
+                        (*width).into(),
+                    )?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
-                    self.get_devices()
-                        .handle_mmio_write(*addr, (*width).into(), *data as usize);
+                    self.get_devices().handle_mmio_write(
+                        *addr,
+                        (*width).into(),
+                        *data as usize,
+                    )?;
                     true
                 }
-                AxVCpuExitReason::IoRead { port: _, width: _ } => true,
-                AxVCpuExitReason::IoWrite {
-                    port: _,
-                    width: _,
-                    data: _,
-                } => true,
+                AxVCpuExitReason::IoRead { port, width } => {
+                    let val = self.get_devices().handle_port_read(
+                        *port,
+                        *width,
+                    )?;
+                    vcpu.set_gpr(0, val); // The target is always eax/ax/al, todo: handle access_width correctly
+
+                    true
+                }
+                AxVCpuExitReason::IoWrite { port, width, data } => {
+                    self.get_devices().handle_port_write(
+                        *port,
+                        *width,
+                        *data as usize,
+                    )?;
+                    true
+                }
+                AxVCpuExitReason::SysRegRead { addr, reg } => {
+                    let val = self.get_devices().handle_sys_reg_read(
+                        *addr,
+                        // Generally speaking, the width of system register is fixed and needless to be specified.
+                        // AccessWidth::Qword here is just a placeholder, may be changed in the future.
+                        AccessWidth::Qword,
+                    )?;
+                    vcpu.set_gpr(*reg, val);
+                    true
+                }
+                AxVCpuExitReason::SysRegWrite { addr, value } => {
+                    self.get_devices().handle_sys_reg_write(
+                        *addr,
+                        AccessWidth::Qword,
+                        *value as usize,
+                    )?;
+                    true
+                }
                 AxVCpuExitReason::NestedPageFault { addr, access_flags } => self
                     .inner_mut
                     .address_space
@@ -337,5 +405,28 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         vcpu.unbind()?;
         Ok(exit_reason)
+    }
+
+    /// Injects an interrupt to the vCPU.
+    pub fn inject_interrupt_to_vcpu(
+        &self,
+        targets: CpuMask<TEMP_MAX_VCPU_NUM>,
+        irq: usize,
+    ) -> AxResult {
+        let vm_id = self.id();
+        // Check if the current running vm is self.
+        //
+        // It is not supported to inject interrupt to a vcpu in another VM yet.
+        //
+        // It may be supported in the future, as a essential feature for cross-VM communication.
+        if H::current_vm_id() != self.id() {
+            panic!("Injecting interrupt to a vcpu in another VM is not supported");
+        }
+
+        for target_vcpu in &targets {
+            H::inject_irq_to_vcpu(vm_id, target_vcpu, irq)?;
+        }
+
+        Ok(())
     }
 }
