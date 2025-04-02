@@ -8,7 +8,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use axerrno::{AxResult, ax_err, ax_err_type};
 use spin::Mutex;
 
-use axaddrspace::npt::{EPTEntry, EPTMetadata, NestedPageTable};
+use axaddrspace::npt::{EPTEntry, EPTMetadata};
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
 
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
@@ -23,7 +23,7 @@ const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
 
 /// A vCPU with architecture-independent interface.
 #[allow(type_alias_bounds)]
-type VCpu<U: AxVCpuHal> = AxVCpu<AxArchVCpuImpl<U>>;
+pub type VCpu<U: AxVCpuHal> = AxVCpu<AxArchVCpuImpl<U>>;
 /// A reference to a vCPU.
 #[allow(type_alias_bounds)]
 pub type AxVCpuRef<U: AxVCpuHal> = Arc<VCpu<U>>;
