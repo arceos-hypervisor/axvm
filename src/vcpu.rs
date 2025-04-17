@@ -5,6 +5,8 @@ cfg_if::cfg_if! {
         pub use x86_vcpu::VmxArchVCpu as AxArchVCpuImpl;
         pub use x86_vcpu::VmxArchPerCpuState as AxVMArchPerCpuImpl;
         pub use x86_vcpu::has_hardware_support;
+        /// TODO: seperate it into a different crate.
+        pub use x86_vcpu::LinuxContext as HostContext;
         pub type AxVCpuCreateConfig = ();
 
         // Note:

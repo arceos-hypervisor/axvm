@@ -15,7 +15,7 @@ use axdevice::{AxVmDeviceConfig, AxVmDevices};
 use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
 
 use crate::config::{AxVMConfig, VmMemMappingType};
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
+use crate::vcpu::AxArchVCpuImpl;
 use crate::{AxVMHal, has_hardware_support};
 
 const VM_ASPACE_BASE: usize = 0x0;
@@ -85,8 +85,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         .unwrap_or(GuestPhysAddr::from_usize(0x9000_0000)),
                 };
                 #[cfg(target_arch = "x86_64")]
-                let arch_config = AxVCpuCreateConfig::default();
-
+                let arch_config = vcpu_id;
                 vcpu_list.push(Arc::new(VCpu::new(
                     vcpu_id,
                     0, // Currently not used.
@@ -375,22 +374,8 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 use x86_vcpu::LinuxContext;
 
 impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
-    pub fn new_host(config: AxVMConfig, host_cpus: &[LinuxContext]) -> AxResult<AxVMRef<H, U>> {
+    pub fn new_host(config: AxVMConfig, host_ctxs: &[LinuxContext]) -> AxResult<AxVMRef<H, U>> {
         let result = Arc::new({
-            let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
-
-            // Create VCpus.
-            let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
-
-            for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
-                debug!("Creating host vCPU[{}] {:x?}", vcpu_id, phys_cpu_set,);
-                vcpu_list.push(Arc::new(VCpu::new_host(
-                    vcpu_id,
-                    host_cpus[vcpu_id].clone(),
-                    phys_cpu_set,
-                )?));
-            }
-
             // Set up Memory regions.
             let mut address_space =
                 AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
@@ -429,6 +414,24 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 emu_configs: config.emu_devices().to_vec(),
             });
 
+            let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
+
+            // Create VCpus.
+            let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
+
+            for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
+                debug!("Creating host vCPU[{}] {:x?}", vcpu_id, phys_cpu_set,);
+                let vcpu = VCpu::new(vcpu_id, 0, phys_cpu_set, vcpu_id)?;
+
+                // Setup VCpus.
+                vcpu.setup_from_context(
+                    address_space.page_table_root(),
+                    host_ctxs[vcpu_id].clone(),
+                )?;
+
+                vcpu_list.push(Arc::new(vcpu));
+            }
+
             Self {
                 running: AtomicBool::new(false),
                 inner_const: AxVMInnerConst {
@@ -446,21 +449,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         });
 
         info!("Host VM created: id={}", result.id());
-
-        // Setup VCpus.
-        for vcpu in result.vcpu_list() {
-            let entry = if vcpu.id() == 0 {
-                result.inner_const.config.bsp_entry()
-            } else {
-                result.inner_const.config.ap_entry()
-            };
-            vcpu.setup(
-                entry,
-                result.ept_root(),
-                <AxArchVCpuImpl<U> as AxArchVCpu>::SetupConfig::default(),
-            )?;
-        }
-        info!("Host VM setup: id={}", result.id());
 
         Ok(result)
     }
