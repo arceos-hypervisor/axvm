@@ -8,7 +8,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use axerrno::{AxResult, ax_err, ax_err_type};
 use spin::Mutex;
 
-use axaddrspace::{device::AccessWidth, AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags};
+use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags, device::AccessWidth};
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
 use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use cpumask::CpuMask;
@@ -167,8 +167,8 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         }
         // TODO: remve this
         // address_space.map_linear(
-        //     GuestPhysAddr::from_usize(0xfee0_0000), 
-        //     start_paddr, 
+        //     GuestPhysAddr::from_usize(0xfee0_0000),
+        //     start_paddr,
         //     size,
         //     MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
         // );
@@ -352,36 +352,26 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     reg,
                     reg_width: _,
                 } => {
-                    let val = self.get_devices().handle_mmio_read(
-                        *addr,
-                        (*width).into(),
-                    )?;
+                    let val = self
+                        .get_devices()
+                        .handle_mmio_read(*addr, (*width).into())?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
-                    self.get_devices().handle_mmio_write(
-                        *addr,
-                        (*width).into(),
-                        *data as usize,
-                    )?;
+                    self.get_devices()
+                        .handle_mmio_write(*addr, (*width).into(), *data as usize)?;
                     true
                 }
                 AxVCpuExitReason::IoRead { port, width } => {
-                    let val = self.get_devices().handle_port_read(
-                        *port,
-                        *width,
-                    )?;
+                    let val = self.get_devices().handle_port_read(*port, *width)?;
                     vcpu.set_gpr(0, val); // The target is always eax/ax/al, todo: handle access_width correctly
 
                     true
                 }
                 AxVCpuExitReason::IoWrite { port, width, data } => {
-                    self.get_devices().handle_port_write(
-                        *port,
-                        *width,
-                        *data as usize,
-                    )?;
+                    self.get_devices()
+                        .handle_port_write(*port, *width, *data as usize)?;
                     true
                 }
                 AxVCpuExitReason::SysRegRead { addr, reg } => {
