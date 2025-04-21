@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use axerrno::{AxResult, ax_err, ax_err_type};
+use page_table_multiarch::PageSize;
 use spin::Mutex;
 
 use axaddrspace::npt::{EPTEntry, EPTMetadata};
@@ -281,12 +282,11 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
     /// Translates a guest physical address to a host physical address.
     /// Returns None if the translation fails or the address is not mapped.
-    pub fn guest_phys_to_host_phys(&self, gpa: GuestPhysAddr) -> Option<HostPhysAddr> {
-        self.inner_mut
-            .address_space
-            .lock()
-            .translate(gpa)
-            .map(|(hpa, _, _)| hpa)
+    pub fn guest_phys_to_host_phys(
+        &self,
+        gpa: GuestPhysAddr,
+    ) -> Option<(HostPhysAddr, MappingFlags, PageSize)> {
+        self.inner_mut.address_space.lock().translate(gpa)
     }
 
     /// Returns if the VM is running.
