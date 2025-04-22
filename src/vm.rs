@@ -284,12 +284,15 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     }
 
     /// Shuts down the VM by setting the shutting_down flag as true.
-    /// 
+    ///
     /// Currently, the "re-init" process of the VM is not implemented. Therefore, a VM can only be
     /// booted once. And after the VM is shut down, it cannot be booted again.
     pub fn shutdown(&self) -> AxResult {
         if self.shutting_down() {
-            ax_err!(BadState, format!("VM[{}] is already shutting down", self.id()))
+            ax_err!(
+                BadState,
+                format!("VM[{}] is already shutting down", self.id())
+            )
         } else {
             info!("Shutting down VM[{}]", self.id());
             self.shutting_down.store(true, Ordering::Relaxed);
