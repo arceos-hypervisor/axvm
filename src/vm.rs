@@ -133,6 +133,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                                 HostPhysAddr::from(mem_region.gpa),
                                 mem_region.size,
                                 mapping_flags,
+                                true,
                             )?;
                         } else {
                             warn!(
@@ -170,6 +171,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     HostPhysAddr::from(pt_device.base_hpa),
                     pt_device.length,
                     MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
+                    false,
                 )?;
             }
 
@@ -402,6 +404,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                             HostPhysAddr::from(mem_region.gpa),
                             mem_region.size,
                             mapping_flags,
+                            true,
                         )?;
                     }
                     VmMemMappingType::MapAlloc => {
