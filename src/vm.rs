@@ -361,6 +361,17 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     .address_space
                     .lock()
                     .handle_page_fault(*addr, *access_flags),
+                AxVCpuExitReason::Nothing => {
+                    if self.is_host_vm() {
+                        // Host VM does not need to handle Nothing exit reason.
+                        // Because its vcpus will not be scheduled among different physical CPUs.
+                        // Just continue running to avoid redundant `unbind` and `bind` operations.
+                        true
+                    } else {
+                        // To allow the scheduler to have a chance to check scheduling status.
+                        false
+                    }
+                }
                 _ => false,
             };
             if !handled {
@@ -389,6 +400,16 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     )
                 })?;
 
+                if (0xd000_0000..0xd100_0000).contains(&mem_region.gpa) {
+                    warn!(
+                        "Ignoring host VM memory region: [{:#x}~{:#x}] {:?}",
+                        mem_region.gpa,
+                        mem_region.gpa + mem_region.size,
+                        mapping_flags
+                    );
+                    continue;
+                }
+
                 info!(
                     "Setting up host VM memory region: [{:#x}~{:#x}] {:?}",
                     mem_region.gpa,
@@ -412,6 +433,21 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     }
                 }
             }
+
+            warn!(
+                "Mapping host VM memory region: [{:#x}~{:#x}] {:?}",
+                0xd000_0000 as usize,
+                0xd000_0000 as usize + 0xff_ffff,
+                MappingFlags::READ | MappingFlags::WRITE
+            );
+
+            address_space.map_linear(
+                GuestPhysAddr::from(0xd000_0000),
+                HostPhysAddr::from(0xd000_0000),
+                0x100_0000,
+                MappingFlags::READ | MappingFlags::WRITE,
+                true,
+            )?;
 
             let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
                 emu_configs: config.emu_devices().to_vec(),
