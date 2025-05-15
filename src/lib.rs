@@ -22,6 +22,9 @@ pub use hal::AxVMHal;
 pub use vm::AxVCpuRef;
 pub use vm::AxVM;
 pub use vm::AxVMRef;
+pub use vm::VCpu;
+
+pub use vcpu::{AxVCpuCreateConfig, HostContext};
 
 /// The architecture-independent per-CPU type.
 pub type AxVMPerCpu<U> = axvcpu::AxPerCpu<vcpu::AxVMArchPerCpuImpl<U>>;
