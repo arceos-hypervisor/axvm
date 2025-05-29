@@ -3,6 +3,7 @@ use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
+use memory_addr::{align_down_4k, align_up_4k};
 
 use axerrno::{AxResult, ax_err, ax_err_type};
 use spin::Mutex;
@@ -162,19 +163,48 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 }
             }
 
+            let mut pt_dev_region = Vec::new();
             for pt_device in config.pass_through_devices() {
                 info!(
-                    "Setting up passthrough device memory region: [{:#x}~{:#x}] -> [{:#x}~{:#x}]",
+                    "PT dev {:?} region: [{:#x}~{:#x}] -> [{:#x}~{:#x}]",
+                    pt_device.name,
                     pt_device.base_gpa,
                     pt_device.base_gpa + pt_device.length,
                     pt_device.base_hpa,
                     pt_device.base_hpa + pt_device.length
                 );
+                // Align the base address and length to 4K boundaries.
+                pt_dev_region.push((
+                    align_down_4k(pt_device.base_gpa),
+                    align_up_4k(pt_device.length),
+                ));
+            }
 
+            pt_dev_region.sort_by_key(|(gpa, _)| *gpa);
+
+            // Merge overlapping regions.
+            let pt_dev_region = pt_dev_region.into_iter().fold(
+                Vec::<(usize, usize)>::new(),
+                |mut acc, (gpa, len)| {
+                    if let Some(last) = acc.last_mut() {
+                        if last.0 + last.1 >= gpa {
+                            // Merge with the last region.
+                            last.1 = (last.0 + last.1).max(gpa + len) - last.0;
+                        } else {
+                            acc.push((gpa, len));
+                        }
+                    } else {
+                        acc.push((gpa, len));
+                    }
+                    acc
+                },
+            );
+
+            for (gpa, len) in &pt_dev_region {
                 address_space.map_linear(
-                    GuestPhysAddr::from(pt_device.base_gpa),
-                    HostPhysAddr::from(pt_device.base_hpa),
-                    pt_device.length,
+                    GuestPhysAddr::from(*gpa),
+                    HostPhysAddr::from(*gpa),
+                    *len,
                     MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
                 )?;
             }
