@@ -18,7 +18,7 @@ use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 use crate::{AxVMHal, has_hardware_support};
 
 #[cfg(target_arch = "aarch64")]
-use crate::vcpu::{get_sysreg_device, get_gic_devices};
+use crate::vcpu::{get_gic_devices, get_sysreg_device};
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -150,7 +150,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 }
             }
         }
-        
+
         for pt_device in config.pass_through_devices() {
             info!(
                 "Setting up passthrough device memory region: [{:#x}~{:#x}] -> [{:#x}~{:#x}]",
