@@ -54,6 +54,7 @@ const TEMP_MAX_VCPU_NUM: usize = 64;
 /// A Virtual Machine.
 pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
     running: AtomicBool,
+    shutting_down: AtomicBool,
     inner_const: AxVMInnerConst<U>,
     inner_mut: AxVMInnerMut<H>,
 }
@@ -149,6 +150,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 }
             }
         }
+        
         for pt_device in config.pass_through_devices() {
             info!(
                 "Setting up passthrough device memory region: [{:#x}~{:#x}] -> [{:#x}~{:#x}]",
@@ -165,13 +167,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
             )?;
         }
-        // TODO: remve this
-        // address_space.map_linear(
-        //     GuestPhysAddr::from_usize(0xfee0_0000),
-        //     start_paddr,
-        //     size,
-        //     MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
-        // );
 
         let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
             emu_configs: config.emu_devices().to_vec(),
@@ -190,6 +185,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         Ok(Self {
             running: AtomicBool::new(false),
+            shutting_down: AtomicBool::new(false),
             inner_const: AxVMInnerConst {
                 id: config.id(),
                 config,
@@ -253,7 +249,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 <AxArchVCpuImpl<U> as AxArchVCpu>::SetupConfig::default(),
             )?;
         }
-        info!("VM setup: id={}", result.id());
+        info!("VM[{}] vcpus set up", result.id());
 
         Ok(result)
     }
@@ -318,13 +314,38 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         if !has_hardware_support() {
             ax_err!(Unsupported, "Hardware does not support virtualization")
         } else if self.running() {
-            ax_err!(BadState, format!("VM[{}] is running", self.id()))
+            ax_err!(BadState, format!("VM[{}] is already running", self.id()))
         } else {
             info!("Booting VM[{}]", self.id());
             self.running.store(true, Ordering::Relaxed);
             Ok(())
         }
     }
+
+    /// Returns if the VM is shutting down.
+    pub fn shutting_down(&self) -> bool {
+        self.shutting_down.load(Ordering::Relaxed)
+    }
+
+    /// Shuts down the VM by setting the shutting_down flag as true.
+    ///
+    /// Currently, the "re-init" process of the VM is not implemented. Therefore, a VM can only be
+    /// booted once. And after the VM is shut down, it cannot be booted again.
+    pub fn shutdown(&self) -> AxResult {
+        if self.shutting_down() {
+            ax_err!(
+                BadState,
+                format!("VM[{}] is already shutting down", self.id())
+            )
+        } else {
+            info!("Shutting down VM[{}]", self.id());
+            self.shutting_down.store(true, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    // TODO: implement suspend/resume.
+    // TODO: implement re-init.
 
     /// Returns this VM's emulated devices.
     pub fn get_devices(&self) -> &AxVmDevices {
@@ -433,5 +454,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         }
 
         Ok(())
+    }
+
+    /// Returns a reference to the VM's configuration.
+    pub fn config(&self) -> &AxVMConfig {
+        &self.inner_const.config
     }
 }
