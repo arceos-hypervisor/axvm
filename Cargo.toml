@@ -36,3 +36,9 @@ riscv_vcpu = { git = "https://github.com/arceos-hypervisor/riscv_vcpu.git", bran
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 arm_vcpu = { git = "https://github.com/arceos-hypervisor/arm_vcpu.git", branch = "debin/timer_api"}
+
+[patch."https://github.com/arceos-hypervisor/arm_vcpu.git"]
+arm_vcpu = { path = "../arm_vcpu" }
+
+[patch."https://github.com/arceos-hypervisor/arm_vgic.git"]
+arm_vgic = { path = "../arm_vgic" }

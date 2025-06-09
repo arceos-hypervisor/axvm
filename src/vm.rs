@@ -18,7 +18,7 @@ use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 use crate::{AxVMHal, has_hardware_support};
 
 #[cfg(target_arch = "aarch64")]
-use crate::vcpu::get_sysreg_device;
+use crate::vcpu::{get_sysreg_device, get_gic_devices};
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -179,8 +179,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         #[cfg(target_arch = "aarch64")]
         {
-            for sysreg in get_sysreg_device() {
-                devices.add_sys_reg_dev(sysreg);
+            // for sysreg in get_sysreg_device() {
+            //     devices.add_sys_reg_dev(sysreg);
+            // }
+            for gic in get_gic_devices() {
+                debug!("Adding GIC device @ {:#x}", gic.address_range());
+                devices.add_mmio_dev(gic);
             }
         }
 

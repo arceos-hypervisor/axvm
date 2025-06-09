@@ -24,5 +24,6 @@ cfg_if::cfg_if! {
         pub use arm_vcpu::Aarch64VCpuCreateConfig as AxVCpuCreateConfig;
         pub use arm_vcpu::has_hardware_support;
         pub use arm_vcpu::get_sysreg_device;
+        pub use arm_vcpu::get_gic_devices;
     }
 }
