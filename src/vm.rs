@@ -2,6 +2,7 @@ use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::vec;
 // use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 use memory_addr::{align_down_4k, align_up_4k};
@@ -19,7 +20,7 @@ use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 use crate::{AxVMHal, has_hardware_support};
 
 #[cfg(target_arch = "aarch64")]
-use crate::vcpu::{get_gic_devices, get_sysreg_device};
+use crate::vcpu::{get_sysreg_device};
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -63,6 +64,7 @@ pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
 impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     fn new_without_setup(config: AxVMConfig) -> AxResult<AxVM<H, U>> {
         let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
+        debug!("id: {}, VCpuIdPCpuSets: {:#x?}", config.id(), vcpu_id_pcpu_sets);
         let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
         for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
             #[cfg(target_arch = "aarch64")]
@@ -204,10 +206,48 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         #[cfg(target_arch = "aarch64")]
         {
-            // for sysreg in get_sysreg_device() {
-            //     devices.add_sys_reg_dev(sysreg);
-            // }
-            for gic in get_gic_devices() {
+            use arm_vcpu::gic::*;
+            let qemu_configs_linux0 = GicDeviceConfig {
+                gicd_base: 0x0800_0000.into(),
+                gicrs: vec![GicDistributorConfig {
+                    gicr_base: 0x080a_0000.into(),
+                    cpu_id: 0, // For logging purposes only.
+                }],
+                assigned_spis: vec![
+                    GicSpiAssignment {
+                        spi: 0x28,
+                        target_cpu_phys_id: 0,
+                        target_cpu_affinity: (0, 0, 0, 0),
+                    },
+                ],
+                gits_base: 0x0808_0000.into(),
+                gits_phys_base: 0x0808_0000.into(),
+                is_root_vm: false,
+            };
+
+            let qemu_configs_linux1 = GicDeviceConfig {
+                gicd_base: 0x0800_0000.into(),
+                gicrs: vec![GicDistributorConfig {
+                    gicr_base: 0x080c_0000.into(),
+                    cpu_id: 1, // For logging purposes only.
+                }],
+                assigned_spis: vec![
+                    GicSpiAssignment {
+                        spi: 0x2a,
+                        target_cpu_phys_id: 1,
+                        target_cpu_affinity: (0, 0, 0, 1),
+                    },
+                ],
+                gits_base: 0x0808_0000.into(),
+                gits_phys_base: 0x0808_0000.into(),
+                is_root_vm: false,
+            };
+
+            for gic in get_gic_devices(if config.id() == 1 {
+                qemu_configs_linux0
+            } else {
+                qemu_configs_linux1
+            }) {
                 debug!("Adding GIC device @ {:#x}", gic.address_range());
                 devices.add_mmio_dev(gic);
             }
