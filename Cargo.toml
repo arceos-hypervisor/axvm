@@ -24,7 +24,7 @@ percpu = { version = "0.2.0", features = ["arm-el2"] }
 # System dependent modules provided by ArceOS-Hypervisor.
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "inject_interrupt" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
-axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "inject_interrupt" }
+axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "inject_interrupt_vgicv3" }
 axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git", branch = "inject_interrupt" }
 axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", default-features = false }
 
