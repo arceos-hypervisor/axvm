@@ -530,4 +530,59 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     pub fn config(&self) -> &AxVMConfig {
         &self.inner_const.config
     }
+
+    pub fn map_region(
+        &self,
+        gpa: GuestPhysAddr,
+        hpa: HostPhysAddr,
+        size: usize,
+        flags: MappingFlags,
+    ) -> AxResult<()> {
+        self.inner_mut
+            .address_space
+            .lock()
+            .map_linear(gpa, hpa, size, flags)
+    }
+
+    pub fn unmap_region(&self, gpa: GuestPhysAddr, size: usize) -> AxResult<()> {
+        self.inner_mut.address_space.lock().unmap(gpa, size)
+    }
+
+    pub fn read_from_guest_of<T>(&self, gpa_ptr: GuestPhysAddr) -> AxResult<T> {
+        let addr_space = self.inner_mut.address_space.lock();
+
+        match addr_space.translated_byte_buffer(gpa_ptr, core::mem::size_of::<T>()) {
+            Some(buffer) => {
+                let bytes = unsafe {
+                    core::slice::from_raw_parts(buffer.as_ptr(), core::mem::size_of::<T>())
+                };
+                let data: T = unsafe { core::ptr::read(bytes.as_ptr() as *const T) };
+                Ok(data)
+            }
+            None => ax_err!(InvalidInput, "Failed to translate guest physical address"),
+        }
+    }
+
+    pub fn write_to_guest_of<T>(&self, gpa_ptr: GuestPhysAddr, data: &T) -> AxResult {
+        let addr_space = self.inner_mut.address_space.lock();
+
+        match addr_space.translated_byte_buffer(gpa_ptr, core::mem::size_of::<T>()) {
+            Some(mut buffer) => {
+                let bytes = unsafe {
+                    core::slice::from_raw_parts(
+                        data as *const T as *const u8,
+                        core::mem::size_of::<T>(),
+                    )
+                };
+                let mut copied_bytes = 0;
+                for (_i, chunk) in buffer.iter_mut().enumerate() {
+                    let end = copied_bytes + chunk.len();
+                    chunk.copy_from_slice(&bytes[copied_bytes..end]);
+                    copied_bytes += chunk.len();
+                }
+                Ok(())
+            }
+            None => ax_err!(InvalidInput, "Failed to translate guest physical address"),
+        }
+    }
 }
