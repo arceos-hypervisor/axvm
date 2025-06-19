@@ -88,6 +88,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             let arch_config = AxVCpuCreateConfig::default();
 
             vcpu_list.push(Arc::new(VCpu::new(
+                config.id(),
                 vcpu_id,
                 0, // Currently not used.
                 phys_cpu_set,
@@ -96,6 +97,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         }
         let mut address_space =
             AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
+        
         for mem_region in config.memory_regions() {
             let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
                 ax_err_type!(
@@ -126,12 +128,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         HostPhysAddr::from(mem_region.gpa),
                         mem_region.size,
                     ) {
-                        address_space.map_linear(
-                            GuestPhysAddr::from(mem_region.gpa),
-                            HostPhysAddr::from(mem_region.gpa),
-                            mem_region.size,
-                            mapping_flags,
-                        )?;
                     } else {
                         warn!(
                             "Failed to allocate memory region at {:#x} for VM [{}]",
@@ -139,6 +135,13 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                             config.id()
                         );
                     }
+
+                    address_space.map_linear(
+                        GuestPhysAddr::from(mem_region.gpa),
+                        HostPhysAddr::from(mem_region.gpa),
+                        mem_region.size,
+                        mapping_flags,
+                    )?;
                 }
                 VmMemMappingType::MapAlloc => {
                     // Note: currently we use `map_alloc`,
@@ -196,7 +199,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 GuestPhysAddr::from(*gpa),
                 HostPhysAddr::from(*gpa),
                 *len,
-                MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
+                MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
             )?;
         }
 
@@ -300,7 +303,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         device_adder: impl FnOnce(&mut AxVmDevices),
     ) -> AxResult<AxVMRef<H, U>> {
         let mut result = Self::new_without_setup(config)?;
-
         device_adder(&mut result.inner_const.devices);
 
         let result = Arc::new(result);
@@ -446,6 +448,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     width,
                     reg,
                     reg_width: _,
+                    signed_ext: _,
                 } => {
                     let val = self
                         .get_devices()
