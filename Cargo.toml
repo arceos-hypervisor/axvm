@@ -22,17 +22,17 @@ page_table_multiarch = "0.5"
 percpu = { version = "0.2.0", features = ["arm-el2"] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "inject_interrupt_vgicv3_ivc" }
+axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
 axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "inject_interrupt_vgicv3" }
-axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git", branch = "inject_interrupt" }
+axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git" }
 axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-x86_vcpu = { git = "https://github.com/arceos-hypervisor/x86_vcpu.git", branch = "inject_interrupt" }
+x86_vcpu = { git = "https://github.com/arceos-hypervisor/x86_vcpu.git" }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
-riscv_vcpu = { git = "https://github.com/arceos-hypervisor/riscv_vcpu.git", branch = "inject_interrupt_vgicv3_ivc" }
+riscv_vcpu = { git = "https://github.com/arceos-hypervisor/riscv_vcpu.git" }
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 arm_vcpu = { git = "https://github.com/arceos-hypervisor/arm_vcpu.git", branch = "inject_interrupt_vgicv3_ivc"}
