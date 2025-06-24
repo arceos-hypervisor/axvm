@@ -552,17 +552,41 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     }
 
     pub fn read_from_guest_of<T>(&self, gpa_ptr: GuestPhysAddr) -> AxResult<T> {
-        let addr_space = self.inner_mut.address_space.lock();
+        let size = core::mem::size_of::<T>();
 
-        match addr_space.translated_byte_buffer(gpa_ptr, core::mem::size_of::<T>()) {
-            Some(buffer) => {
-                let bytes = unsafe {
-                    core::slice::from_raw_parts(buffer.as_ptr(), core::mem::size_of::<T>())
+        // Ensure the address is properly aligned for the type.
+        if gpa_ptr.as_usize() % core::mem::align_of::<T>() != 0 {
+            return ax_err!(InvalidInput, "Unaligned guest physical address");
+        }
+
+        let addr_space = self.inner_mut.address_space.lock();
+        match addr_space.translated_byte_buffer(gpa_ptr, size) {
+            Some(buffers) => {
+                let mut data_bytes = Vec::with_capacity(size);
+                for chunk in buffers {
+                    let remaining = size - data_bytes.len();
+                    let chunk_size = remaining.min(chunk.len());
+                    data_bytes.extend_from_slice(&chunk[..chunk_size]);
+                    if data_bytes.len() >= size {
+                        break;
+                    }
+                }
+                if data_bytes.len() < size {
+                    return ax_err!(
+                        InvalidInput,
+                        "Insufficient data in guest memory to read the requested object"
+                    );
+                }
+                let data: T = unsafe {
+                    // Use `ptr::read_unaligned` for safety in case of unaligned memory.
+                    core::ptr::read_unaligned(data_bytes.as_ptr() as *const T)
                 };
-                let data: T = unsafe { core::ptr::read(bytes.as_ptr() as *const T) };
                 Ok(data)
             }
-            None => ax_err!(InvalidInput, "Failed to translate guest physical address"),
+            None => ax_err!(
+                InvalidInput,
+                "Failed to translate guest physical address or insufficient buffer size"
+            ),
         }
     }
 
@@ -587,5 +611,28 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             }
             None => ax_err!(InvalidInput, "Failed to translate guest physical address"),
         }
+    }
+
+    /// Allocates an IVC channel for inter-VM communication region.
+    ///
+    /// ## Arguments
+    /// * `expected_size` - The expected size of the IVC channel in bytes.
+    /// ## Returns
+    /// * `AxResult<(GuestPhysAddr, usize)>` - A tuple containing the guest physical address of the allocated IVC channel and its actual size.
+    pub fn alloc_ivc_channel(&self, expected_size: usize) -> AxResult<(GuestPhysAddr, usize)> {
+        // Ensure the expected size is aligned to 4K.
+        let size = align_up_4k(expected_size);
+        let gpa = self.inner_const.devices.alloc_ivc_channel(size)?;
+        Ok((gpa, size))
+    }
+
+    /// Releases an IVC channel for inter-VM communication region.
+    /// ## Arguments
+    /// * `gpa` - The guest physical address of the IVC channel to release.
+    /// * `size` - The size of the IVC channel in bytes.
+    /// ## Returns
+    /// * `AxResult<()>` - An empty result indicating success or failure.
+    pub fn release_ivc_channel(&self, gpa: GuestPhysAddr, size: usize) -> AxResult {
+        self.inner_const.devices.release_ivc_channel(gpa, size)
     }
 }
