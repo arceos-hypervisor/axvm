@@ -551,6 +551,14 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         self.inner_mut.address_space.lock().unmap(gpa, size)
     }
 
+    pub fn translate(&self, gpa: GuestPhysAddr) -> AxResult<HostPhysAddr> {
+        self.inner_mut
+            .address_space
+            .lock()
+            .translate(gpa)
+            .ok_or_else(|| ax_err_type!(InvalidInput, "Failed to translate guest physical address"))
+    }
+
     pub fn read_from_guest_of<T>(&self, gpa_ptr: GuestPhysAddr) -> AxResult<T> {
         let size = core::mem::size_of::<T>();
 
