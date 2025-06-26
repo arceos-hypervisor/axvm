@@ -5,6 +5,9 @@ pub trait AxVMHal: Sized {
     /// The low-level **OS-dependent** helpers that must be provided for physical address management.
     type PagingHandler: page_table_multiarch::PagingHandler;
 
+    fn current_vm_id() -> usize;
+    fn current_vcpu_id() -> usize;
+    fn current_pcpu_id() -> usize;
     /// Allocates a memory region at the specified physical address.
     ///
     /// Returns `true` if the memory region is successfully allocated.

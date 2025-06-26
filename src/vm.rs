@@ -344,13 +344,14 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 } => {
                     let val = self
                         .get_devices()
-                        .handle_mmio_read(*addr, (*width).into())?;
+                        .handle_mmio_read(*addr, *width)?;
+                    error!("MMIO read at {:#x} with width {:?}: {:#x}, set gpr: {:#x}", addr, width, val, reg);
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     self.get_devices()
-                        .handle_mmio_write(*addr, (*width).into(), *data as usize);
+                        .handle_mmio_write(*addr, *width, *data as usize);
                     true
                 }
                 AxVCpuExitReason::IoRead { port: _, width: _ } => true,
@@ -373,6 +374,14 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         vcpu.unbind()?;
         Ok(exit_reason)
+    }
+
+    pub fn translate(&self, gpa: GuestPhysAddr) -> AxResult<HostPhysAddr> {
+        self.inner_mut
+            .address_space
+            .lock()
+            .translate(gpa)
+            .ok_or_else(|| ax_err_type!(InvalidInput, "Failed to translate guest physical address"))
     }
 
     /// Returns a reference to the VM's configuration.
