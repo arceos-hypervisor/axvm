@@ -345,7 +345,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     let val = self
                         .get_devices()
                         .handle_mmio_read(*addr, *width)?;
-                    error!("MMIO read at {:#x} with width {:?}: {:#x}, set gpr: {:#x}", addr, width, val, reg);
+                    trace!("MMIO read at {:#x} with width {:?}: {:#x}, set gpr: {:#x}", addr, width, val, reg);
                     vcpu.set_gpr(*reg, val);
                     true
                 }
