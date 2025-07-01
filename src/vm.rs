@@ -1,8 +1,8 @@
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use alloc::vec;
+use alloc::vec::Vec;
 // use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 use memory_addr::{align_down_4k, align_up_4k};
@@ -20,7 +20,7 @@ use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 use crate::{AxVMHal, has_hardware_support};
 
 #[cfg(target_arch = "aarch64")]
-use crate::vcpu::{get_sysreg_device};
+use crate::vcpu::get_sysreg_device;
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -64,7 +64,11 @@ pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
 impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     fn new_without_setup(config: AxVMConfig) -> AxResult<AxVM<H, U>> {
         let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
-        debug!("id: {}, VCpuIdPCpuSets: {:#x?}", config.id(), vcpu_id_pcpu_sets);
+        debug!(
+            "id: {}, VCpuIdPCpuSets: {:#x?}",
+            config.id(),
+            vcpu_id_pcpu_sets
+        );
         let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
         for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
             #[cfg(target_arch = "aarch64")]
@@ -129,6 +133,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         mem_region.size,
                     ) {
                     } else {
+                        address_space.map_linear(
+                            GuestPhysAddr::from(mem_region.gpa),
+                            HostPhysAddr::from(mem_region.gpa),
+                            mem_region.size,
+                            mapping_flags,
+                        )?;
                         warn!(
                             "Failed to allocate memory region at {:#x} for VM [{}]",
                             mem_region.gpa,
@@ -159,7 +169,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         let mut pt_dev_region = Vec::new();
         for pt_device in config.pass_through_devices() {
-            info!(
+            trace!(
                 "PT dev {:?} region: [{:#x}~{:#x}] -> [{:#x}~{:#x}]",
                 pt_device.name,
                 pt_device.base_gpa,
@@ -209,50 +219,50 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         #[cfg(target_arch = "aarch64")]
         {
+            const GICD_BASE: usize = 0xfe60_0000;
+            const GICR_BASE: [usize; 4] = [0xfe68_0000, 0xfe6a_0000, 0xfe6c_0000, 0xfe6e_0000];
+            const GITS_BASE: usize = 0xfe64_0000;
             use arm_vcpu::gic::*;
-            let qemu_configs_linux0 = GicDeviceConfig {
-                gicd_base: 0x0800_0000.into(),
+
+            // TODO: Parse phys cpu id from vm config
+            let id = config.id() - 1;
+            let cpu_id = id * 2;
+            let gic_config = GicDeviceConfig {
+                gicd_base: GICD_BASE.into(),
                 gicrs: vec![GicDistributorConfig {
-                    gicr_base: 0x080a_0000.into(),
-                    cpu_id: 0, // For logging purposes only.
+                    gicr_base: GICR_BASE[cpu_id].into(),
+                    cpu_id: cpu_id, // For logging purposes only.
+                },
+                GicDistributorConfig {
+                    gicr_base: GICR_BASE[cpu_id + 1].into(),
+                    cpu_id: cpu_id + 1, // For logging purposes only.
                 }],
-                assigned_spis: vec![
-                    GicSpiAssignment {
-                        spi: 0x28,
-                        target_cpu_phys_id: 0,
-                        target_cpu_affinity: (0, 0, 0, 0),
-                    },
-                ],
-                gits_base: 0x0808_0000.into(),
-                gits_phys_base: 0x0808_0000.into(),
+                assigned_spis: config
+                    .pass_through_spis()
+                    .iter()
+                    .map(|spi| GicSpiAssignment {
+                        spi: spi + 32,
+                        // rk3588 uart2 temp hack
+                        // target_cpu_phys_id: if *spi == 333 { 1 } else { cpu_id },
+                        // target_cpu_affinity: if *spi == 333 {
+                        //     (0, 0, 1, 0)
+                        // } else {
+                        //     (0, 0, cpu_id as _, 0)
+                        // },
+                        target_cpu_phys_id: cpu_id,
+                        target_cpu_affinity: (0, 0, cpu_id as _, 0),
+                    })
+                    .collect(),
+                gits_base: GITS_BASE.into(),
+                gits_phys_base: GITS_BASE.into(),
                 is_root_vm: false,
             };
 
-            let qemu_configs_linux1 = GicDeviceConfig {
-                gicd_base: 0x0800_0000.into(),
-                gicrs: vec![GicDistributorConfig {
-                    gicr_base: 0x080c_0000.into(),
-                    cpu_id: 1, // For logging purposes only.
-                }],
-                assigned_spis: vec![
-                    GicSpiAssignment {
-                        spi: 0x2a,
-                        target_cpu_phys_id: 1,
-                        target_cpu_affinity: (0, 0, 0, 1),
-                    },
-                ],
-                gits_base: 0x0808_0000.into(),
-                gits_phys_base: 0x0808_0000.into(),
-                is_root_vm: false,
-            };
-
-            for gic in get_gic_devices(if config.id() == 1 {
-                qemu_configs_linux0
-            } else {
-                qemu_configs_linux1
-            }) {
-                debug!("Adding GIC device @ {:#x}", gic.address_range());
-                devices.add_mmio_dev(gic);
+            let gic_devices = get_gic_devices(gic_config);
+            debug!("devices num: {}", gic_devices.len());
+            for gic_device in gic_devices {
+                debug!("Adding GIC device @ {:#x}", gic_device.address_range());
+                devices.add_mmio_dev(gic_device);
             }
         }
 

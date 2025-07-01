@@ -59,6 +59,8 @@ pub struct AxVMConfig {
     memory_regions: Vec<VmMemConfig>,
     emu_devices: Vec<EmulatedDeviceConfig>,
     pass_through_devices: Vec<PassThroughDeviceConfig>,
+    // TODO: improve interrupt passthrough
+    spi_list: Vec<u32>,
 }
 
 impl From<AxVMCrateConfig> for AxVMConfig {
@@ -83,6 +85,7 @@ impl From<AxVMCrateConfig> for AxVMConfig {
             memory_regions: cfg.kernel.memory_regions,
             emu_devices: cfg.devices.emu_devices,
             pass_through_devices: cfg.devices.passthrough_devices,
+            spi_list: Vec::new(),
         }
     }
 }
@@ -169,5 +172,13 @@ impl AxVMConfig {
 
     pub fn add_pass_through_device(&mut self, device: PassThroughDeviceConfig) {
         self.pass_through_devices.push(device);
+    }
+
+    pub fn add_pass_through_spi(&mut self, spi: u32) {
+        self.spi_list.push(spi);
+    }
+
+    pub fn pass_through_spis(&self) -> &Vec<u32> {
+        &self.spi_list
     }
 }
