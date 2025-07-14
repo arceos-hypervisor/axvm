@@ -11,7 +11,7 @@ use spin::Mutex;
 
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags, device::AccessWidth};
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
-use axvcpu::{AxVCpu, AxVCpuExitReason, AxVCpuHal};
+use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, VmMemMappingType};
