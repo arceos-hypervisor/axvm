@@ -160,7 +160,7 @@ impl AxVMConfig {
     pub fn contains_memory_range(&self, range: &Range<usize>) -> bool {
         self.memory_regions
             .iter()
-            .any(|region| region.gpa < range.start && region.gpa + region.size > range.end)
+            .any(|region| region.gpa <= range.start && region.gpa + region.size >= range.end)
     }
 
     /// Returns configurations related to VM emulated devices.
