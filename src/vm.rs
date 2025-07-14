@@ -1,9 +1,8 @@
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
-use alloc::vec;
 use alloc::vec::Vec;
-// use core::cell::UnsafeCell;
+use axvmconfig::VMInterruptMode;
 use core::sync::atomic::{AtomicBool, Ordering};
 use memory_addr::{align_down_4k, align_up_4k};
 
@@ -12,7 +11,7 @@ use spin::Mutex;
 
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags, device::AccessWidth};
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
-use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
+use axvcpu::{AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, VmMemMappingType};
@@ -62,13 +61,18 @@ pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
 }
 
 impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
-    fn new_without_setup(config: AxVMConfig) -> AxResult<AxVM<H, U>> {
+    /// Creates a new VM with the given configuration.
+    /// Returns an error if the configuration is invalid.
+    /// The VM is not started until `boot` is called.
+    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>> {
         let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
+
         debug!(
             "id: {}, VCpuIdPCpuSets: {:#x?}",
             config.id(),
             vcpu_id_pcpu_sets
         );
+
         let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
         for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
             #[cfg(target_arch = "aarch64")]
@@ -101,7 +105,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         }
         let mut address_space =
             AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
-        
+
         for mem_region in config.memory_regions() {
             let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
                 ax_err_type!(
@@ -127,7 +131,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
             // Handle ram region.
             match mem_region.map_type {
-                VmMemMappingType::MapIentical => {
+                VmMemMappingType::MapIdentical => {
                     if H::alloc_memory_region_at(
                         HostPhysAddr::from(mem_region.gpa),
                         mem_region.size,
@@ -209,7 +213,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 GuestPhysAddr::from(*gpa),
                 HostPhysAddr::from(*gpa),
                 *len,
-                MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
+                MappingFlags::DEVICE
+                    | MappingFlags::READ
+                    | MappingFlags::WRITE
+                    | MappingFlags::USER,
             )?;
         }
 
@@ -217,56 +224,49 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             emu_configs: config.emu_devices().to_vec(),
         });
 
+        let passthrough = config.interrupt_mode() == VMInterruptMode::Passthrough;
+
         #[cfg(target_arch = "aarch64")]
         {
-            const GICD_BASE: usize = 0xfe60_0000;
-            const GICR_BASE: [usize; 4] = [0xfe68_0000, 0xfe6a_0000, 0xfe6c_0000, 0xfe6e_0000];
-            const GITS_BASE: usize = 0xfe64_0000;
-            use arm_vcpu::gic::*;
+            if passthrough {
+                let spis = config.pass_through_spis();
+                let cpu_id = config.id() - 1; // FIXME: get the real CPU id.
+                let mut gicd_found = false;
 
-            // TODO: Parse phys cpu id from vm config
-            let id = config.id() - 1;
-            let cpu_id = id * 2;
-            let gic_config = GicDeviceConfig {
-                gicd_base: GICD_BASE.into(),
-                gicrs: vec![GicDistributorConfig {
-                    gicr_base: GICR_BASE[cpu_id].into(),
-                    cpu_id: cpu_id, // For logging purposes only.
-                },
-                GicDistributorConfig {
-                    gicr_base: GICR_BASE[cpu_id + 1].into(),
-                    cpu_id: cpu_id + 1, // For logging purposes only.
-                }],
-                assigned_spis: config
-                    .pass_through_spis()
-                    .iter()
-                    .map(|spi| GicSpiAssignment {
-                        spi: spi + 32,
-                        // rk3588 uart2 temp hack
-                        // target_cpu_phys_id: if *spi == 333 { 1 } else { cpu_id },
-                        // target_cpu_affinity: if *spi == 333 {
-                        //     (0, 0, 1, 0)
-                        // } else {
-                        //     (0, 0, cpu_id as _, 0)
-                        // },
-                        target_cpu_phys_id: cpu_id,
-                        target_cpu_affinity: (0, 0, cpu_id as _, 0),
-                    })
-                    .collect(),
-                gits_base: GITS_BASE.into(),
-                gits_phys_base: GITS_BASE.into(),
-                is_root_vm: false,
-            };
+                for device in devices.iter_mmio_dev() {
+                    if let Some(result) = axdevice_base::map_device_of_type(
+                        device,
+                        |gicd: &arm_vgic::v3::vgicd::VGicD| {
+                            debug!("VGicD found, assigning SPIs...");
 
-            let gic_devices = get_gic_devices(gic_config);
-            debug!("devices num: {}", gic_devices.len());
-            for gic_device in gic_devices {
-                debug!("Adding GIC device @ {:#x}", gic_device.address_range());
-                devices.add_mmio_dev(gic_device);
+                            for spi in spis {
+                                gicd.assign_irq(*spi + 32, cpu_id, (0, 0, 0, cpu_id as _))
+                            }
+
+                            Ok(())
+                        },
+                    ) {
+                        result?;
+                        gicd_found = true;
+                        break;
+                    }
+                }
+
+                if !gicd_found {
+                    warn!("Failed to assign SPIs: No VGicD found in device list");
+                }
+            } else {
+                // non-passthrough mode, we need to set up the virtual timer.
+                //
+                // FIXME: maybe let `axdevice` handle this automatically?
+                // how to let `axdevice` know whether the VM is in passthrough mode or not?
+                for dev in get_sysreg_device() {
+                    devices.add_sys_reg_dev(dev);
+                }
             }
         }
 
-        Ok(Self {
+        let result = Arc::new(Self {
             running: AtomicBool::new(false),
             shutting_down: AtomicBool::new(false),
             inner_const: AxVMInnerConst {
@@ -279,59 +279,34 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 address_space: Mutex::new(address_space),
                 _marker: core::marker::PhantomData,
             },
-        })
-    }
-
-    /// Creates a new VM with the given configuration.
-    /// Returns an error if the configuration is invalid.
-    /// The VM is not started until `boot` is called.
-    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>> {
-        let result = Arc::new(Self::new_without_setup(config)?);
+        });
 
         info!("VM created: id={}", result.id());
 
         // Setup VCpus.
         for vcpu in result.vcpu_list() {
+            let setup_config = {
+                #[cfg(target_arch = "aarch64")]
+                {
+                    crate::vcpu::AxVCpuSetupConfig {
+                        passthrough_interrupt: passthrough,
+                        passthrough_timer: passthrough,
+                    }
+                }
+                #[cfg(not(target_arch = "aarch64"))]
+                {
+                    <AxArchVCpuImpl<U> as AxArchVCpu>::SetupConfig::default()
+                }
+            };
+
             let entry = if vcpu.id() == 0 {
                 result.inner_const.config.bsp_entry()
             } else {
                 result.inner_const.config.ap_entry()
             };
-            vcpu.setup(
-                entry,
-                result.ept_root(),
-                <AxArchVCpuImpl<U> as AxArchVCpu>::SetupConfig::default(),
-            )?;
+            vcpu.setup(entry, result.ept_root(), setup_config)?;
         }
         info!("VM setup: id={}", result.id());
-
-        Ok(result)
-    }
-
-    pub fn temp_new_with_device_adder(
-        config: AxVMConfig,
-        device_adder: impl FnOnce(&mut AxVmDevices),
-    ) -> AxResult<AxVMRef<H, U>> {
-        let mut result = Self::new_without_setup(config)?;
-        device_adder(&mut result.inner_const.devices);
-
-        let result = Arc::new(result);
-        info!("VM created: id={}", result.id());
-
-        // Setup VCpus.
-        for vcpu in result.vcpu_list() {
-            let entry = if vcpu.id() == 0 {
-                result.inner_const.config.bsp_entry()
-            } else {
-                result.inner_const.config.ap_entry()
-            };
-            vcpu.setup(
-                entry,
-                result.ept_root(),
-                <AxArchVCpuImpl<U> as AxArchVCpu>::SetupConfig::default(),
-            )?;
-        }
-        info!("VM[{}] vcpus set up", result.id());
 
         Ok(result)
     }

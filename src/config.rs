@@ -8,8 +8,8 @@ use core::ops::Range;
 use axaddrspace::GuestPhysAddr;
 
 pub use axvmconfig::{
-    AxVMCrateConfig, EmulatedDeviceConfig, PassThroughDeviceConfig, VMType, VmMemConfig,
-    VmMemMappingType,
+    AxVMCrateConfig, EmulatedDeviceConfig, PassThroughDeviceConfig, VMInterruptMode, VMType,
+    VmMemConfig, VmMemMappingType,
 };
 
 /// A part of `AxVCpuConfig`, which represents an architecture-dependent `VCpu`.
@@ -61,6 +61,7 @@ pub struct AxVMConfig {
     pass_through_devices: Vec<PassThroughDeviceConfig>,
     // TODO: improve interrupt passthrough
     spi_list: Vec<u32>,
+    interrupt_mode: VMInterruptMode,
 }
 
 impl From<AxVMCrateConfig> for AxVMConfig {
@@ -86,6 +87,7 @@ impl From<AxVMCrateConfig> for AxVMConfig {
             emu_devices: cfg.devices.emu_devices,
             pass_through_devices: cfg.devices.passthrough_devices,
             spi_list: Vec::new(),
+            interrupt_mode: cfg.devices.interrupt_mode,
         }
     }
 }
@@ -180,5 +182,9 @@ impl AxVMConfig {
 
     pub fn pass_through_spis(&self) -> &Vec<u32> {
         &self.spi_list
+    }
+
+    pub fn interrupt_mode(&self) -> VMInterruptMode {
+        self.interrupt_mode
     }
 }
