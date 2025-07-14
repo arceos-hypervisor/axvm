@@ -519,6 +519,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         &self.inner_const.config
     }
 
+    /// Maps a region of host physical memory to guest physical memory.
     pub fn map_region(
         &self,
         gpa: GuestPhysAddr,
@@ -532,10 +533,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             .map_linear(gpa, hpa, size, flags)
     }
 
+    /// Unmaps a region of guest physical memory.
     pub fn unmap_region(&self, gpa: GuestPhysAddr, size: usize) -> AxResult<()> {
         self.inner_mut.address_space.lock().unmap(gpa, size)
     }
 
+    /// Reads an object of type `T` from the guest physical address.
     pub fn read_from_guest_of<T>(&self, gpa_ptr: GuestPhysAddr) -> AxResult<T> {
         let size = core::mem::size_of::<T>();
 
@@ -575,6 +578,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         }
     }
 
+    /// Writes an object of type `T` to the guest physical address.
     pub fn write_to_guest_of<T>(&self, gpa_ptr: GuestPhysAddr, data: &T) -> AxResult {
         let addr_space = self.inner_mut.address_space.lock();
 

@@ -151,6 +151,7 @@ impl AxVMConfig {
         &self.memory_regions
     }
 
+    /// Adds a new memory region to the VM configuration.
     pub fn add_memory_region(&mut self, region: VmMemConfig) {
         self.memory_regions.push(region);
     }
@@ -172,18 +173,22 @@ impl AxVMConfig {
         &self.pass_through_devices
     }
 
+    /// Adds a new passthrough device to the VM configuration.
     pub fn add_pass_through_device(&mut self, device: PassThroughDeviceConfig) {
         self.pass_through_devices.push(device);
     }
 
+    /// Adds a passthrough SPI to the VM configuration.
     pub fn add_pass_through_spi(&mut self, spi: u32) {
         self.spi_list.push(spi);
     }
 
+    /// Returns the list of passthrough SPIs.
     pub fn pass_through_spis(&self) -> &Vec<u32> {
         &self.spi_list
     }
 
+    /// Returns the interrupt mode of the VM.
     pub fn interrupt_mode(&self) -> VMInterruptMode {
         self.interrupt_mode
     }
