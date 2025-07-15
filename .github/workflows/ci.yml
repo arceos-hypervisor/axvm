@@ -2,14 +2,61 @@ name: CI
 
 on: [push, pull_request]
 
+env:
+  rust-toolchain: nightly-2025-05-20
+
 jobs:
+  clippy:
+      runs-on: ubuntu-latest
+      strategy:
+        fail-fast: false
+        matrix:
+          arch: [x86_64, riscv64, aarch64]
+          rust-toolchain: [nightly, nightly-2025-05-20]
+      env:
+        RUSTUP_TOOLCHAIN: ${{ matrix.rust-toolchain }}
+      steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust-toolchain }}
+          components: rust-src, clippy, rustfmt
+          targets: x86_64-unknown-none, riscv64gc-unknown-none-elf, aarch64-unknown-none-softfloat
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cargo-bin-cache
+          cache-targets: false
+      - name: Check rust version
+        run: rustc --version --verbose
+      - name: Check code format
+        if: ${{ matrix.arch == 'x86_64' }}
+        continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
+        run: cargo fmt --all -- --check
+      - name: Clippy for the default target
+        if: ${{ matrix.arch == 'x86_64' }}
+        continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Clippy for ${{ matrix.arch }}
+        continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
+        run: |
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            cargo clippy --target x86_64-unknown-none --all-features -- -D warnings
+          elif [ "${{ matrix.arch }}" = "riscv64" ]; then
+            cargo clippy --target riscv64gc-unknown-none-elf --all-features -- -D warnings
+          elif [ "${{ matrix.arch }}" = "aarch64" ]; then
+            cargo clippy --target aarch64-unknown-none-softfloat --all-features -- -D warnings
+          fi
+
   ci:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        rust-toolchain: [nightly-2024-12-25, nightly]
-        targets: [x86_64-unknown-linux-gnu, x86_64-unknown-none, riscv64gc-unknown-none-elf, aarch64-unknown-none-softfloat]
+        rust-toolchain: [nightly-2025-05-20, nightly]
+        targets: [x86_64-unknown-linux-gnu, 
+                  x86_64-unknown-none, 
+                  riscv64gc-unknown-none-elf, 
+                  aarch64-unknown-none-softfloat]
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@nightly
@@ -31,7 +78,7 @@ jobs:
       if: ${{ matrix.targets == 'x86_64-unknown-linux-gnu' }}
       continue-on-error: ${{ matrix.rust-toolchain == 'nightly' }}
       run: cargo test --target ${{ matrix.targets }} -- --nocapture
-
+      
   doc:
     runs-on: ubuntu-latest
     strategy:
@@ -45,7 +92,7 @@ jobs:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@nightly
       with:
-        toolchain: nightly-2024-12-25
+        toolchain: nightly-2025-05-20
     - name: Build docs
       continue-on-error: ${{ github.ref != env.default-branch && github.event_name != 'pull_request' }}
       run: |
