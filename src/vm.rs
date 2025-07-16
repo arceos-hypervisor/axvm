@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use axerrno::{AxResult, ax_err, ax_err_type};
+use memory_addr::align_up_4k;
 use page_table_multiarch::PageSize;
 use spin::Mutex;
 
@@ -46,6 +47,7 @@ unsafe impl<U: AxVCpuHal> Sync for AxVMInnerConst<U> {}
 struct AxVMInnerMut<H: AxVMHal> {
     // Todo: use more efficient lock.
     address_space: Mutex<AddrSpace<EPTMetadata, EPTEntry, H::PagingHandler>>,
+    shm_region_base: Mutex<usize>,
     _marker: core::marker::PhantomData<H>,
 }
 
@@ -98,6 +100,8 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             // Set up Memory regions.
             let mut address_space =
                 AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
+            // Find the end of guest VM's physical address space.
+            let mut max_gpa = 0;
             for mem_region in config.memory_regions() {
                 let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
                     ax_err_type!(
@@ -120,6 +124,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     mem_region.gpa + mem_region.size,
                     mapping_flags
                 );
+
+                if mem_region.gpa + mem_region.size > max_gpa {
+                    max_gpa = mem_region.gpa + mem_region.size;
+                }
 
                 // Handle ram region.
                 match mem_region.map_type {
@@ -190,6 +198,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 },
                 inner_mut: AxVMInnerMut {
                     address_space: Mutex::new(address_space),
+                    shm_region_base: Mutex::new(max_gpa + 0x1000), // Start from the next page after the max gpa.
                     _marker: core::marker::PhantomData,
                 },
             }
@@ -280,6 +289,25 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             .translated_byte_buffer(image_load_gpa, image_size)
             .expect("Failed to translate kernel image load address");
         Ok(image_load_hva)
+    }
+
+    pub fn alloc_one_shm_region(&self, size: usize) -> AxResult<GuestPhysAddr> {
+        let mut shm_region_base = self.inner_mut.shm_region_base.lock();
+        let base = *shm_region_base;
+        let aligned_size = align_up_4k(size);
+        if base + aligned_size > VM_ASPACE_SIZE {
+            return ax_err!(NoMemory, "No more shared memory region available");
+        }
+        *shm_region_base += aligned_size;
+
+        debug!(
+            "Allocating shared memory region: [{:#x}~{:#x}], shm_base extend to {:#x}",
+            base,
+            base + aligned_size,
+            *shm_region_base
+        );
+
+        Ok(GuestPhysAddr::from(base))
     }
 
     /// Translates a guest physical address to a host physical address.
@@ -392,6 +420,8 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             // Set up Memory regions.
             let mut address_space =
                 AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
+            // Find the end of guest VM's physical address space.
+            let mut max_gpa = 0;
             for mem_region in config.memory_regions() {
                 let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
                     ax_err_type!(
@@ -416,6 +446,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     mem_region.gpa + mem_region.size,
                     mapping_flags
                 );
+
+                if mem_region.gpa + mem_region.size > max_gpa {
+                    max_gpa = mem_region.gpa + mem_region.size;
+                }
 
                 // Handle ram region.
                 match mem_region.map_type {
@@ -482,6 +516,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 },
                 inner_mut: AxVMInnerMut {
                     address_space: Mutex::new(address_space),
+                    shm_region_base: Mutex::new(max_gpa + 0x1000), // Start from the next page after the max gpa.
                     _marker: core::marker::PhantomData,
                 },
             }
