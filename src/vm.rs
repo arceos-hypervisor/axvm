@@ -27,7 +27,6 @@ use spin::Mutex;
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags, device::AccessWidth};
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
 use axvcpu::{AxVCpu, AxVCpuExitReason, AxVCpuHal};
-
 use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, VmMemMappingType};
@@ -320,9 +319,18 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         // Setup VCpus.
         #[cfg(target_arch = "aarch64")]
         for vcpu in result.vcpu_list() {
-            let setup_config = crate::vcpu::AxVCpuSetupConfig {
-                passthrough_interrupt: passthrough,
-                passthrough_timer: passthrough,
+            let setup_config = {
+                #[cfg(target_arch = "aarch64")]
+                {
+                    crate::vcpu::AxVCpuSetupConfig {
+                        passthrough_interrupt: passthrough,
+                        passthrough_timer: passthrough,
+                    }
+                }
+                #[cfg(not(target_arch = "aarch64"))]
+                {
+                    <AxArchVCpuImpl<U> as axvcpu::AxArchVCpu>::SetupConfig::default()
+                }
             };
 
             let entry = if vcpu.id() == 0 {
@@ -473,11 +481,13 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     signed_ext: _,
                 } => {
                     let val = self.get_devices().handle_mmio_read(*addr, *width)?;
+                    let val = self.get_devices().handle_mmio_read(*addr, *width)?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     self.get_devices()
+                        .handle_mmio_write(*addr, *width, *data as usize)?;
                         .handle_mmio_write(*addr, *width, *data as usize)?;
                     true
                 }
@@ -629,6 +639,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     )
                 };
                 let mut copied_bytes = 0;
+                for chunk in buffer.iter_mut() {
                 for chunk in buffer.iter_mut() {
                     let end = copied_bytes + chunk.len();
                     chunk.copy_from_slice(&bytes[copied_bytes..end]);
