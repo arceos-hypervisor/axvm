@@ -11,7 +11,7 @@ use spin::Mutex;
 
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags, device::AccessWidth};
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
-use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuExitReason, AxVCpuHal};
+use axvcpu::{AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, VmMemMappingType};
@@ -295,7 +295,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 }
                 #[cfg(not(target_arch = "aarch64"))]
                 {
-                    <AxArchVCpuImpl<U> as AxArchVCpu>::SetupConfig::default()
+                    <AxArchVCpuImpl<U> as axvcpu::AxArchVCpu>::SetupConfig::default()
                 }
             };
 
@@ -435,15 +435,13 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     reg_width: _,
                     signed_ext: _,
                 } => {
-                    let val = self
-                        .get_devices()
-                        .handle_mmio_read(*addr, (*width).into())?;
+                    let val = self.get_devices().handle_mmio_read(*addr, *width)?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     self.get_devices()
-                        .handle_mmio_write(*addr, (*width).into(), *data as usize)?;
+                        .handle_mmio_write(*addr, *width, *data as usize)?;
                     true
                 }
                 AxVCpuExitReason::IoRead { port, width } => {
@@ -591,7 +589,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     )
                 };
                 let mut copied_bytes = 0;
-                for (_i, chunk) in buffer.iter_mut().enumerate() {
+                for chunk in buffer.iter_mut() {
                     let end = copied_bytes + chunk.len();
                     chunk.copy_from_slice(&bytes[copied_bytes..end]);
                     copied_bytes += chunk.len();
