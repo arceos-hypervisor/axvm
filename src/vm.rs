@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use axerrno::{AxResult, ax_err, ax_err_type};
-use memory_addr::align_up_4k;
+use memory_addr::{align_up, is_aligned};
 use page_table_multiarch::PageSize;
 use spin::Mutex;
 
@@ -291,23 +291,28 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(image_load_hva)
     }
 
-    pub fn alloc_one_shm_region(&self, size: usize) -> AxResult<GuestPhysAddr> {
+    pub fn alloc_one_shm_region(&self, size: usize, alignment: usize) -> AxResult<GuestPhysAddr> {
+        if !is_aligned(size, alignment) {
+            error!("Size {:#x} is not aligned to {:#x}", size, alignment);
+            return ax_err!(InvalidInput, "Size is not aligned");
+        }
+
         let mut shm_region_base = self.inner_mut.shm_region_base.lock();
-        let base = *shm_region_base;
-        let aligned_size = align_up_4k(size);
-        if base + aligned_size > VM_ASPACE_SIZE {
+        let base_unaligned = *shm_region_base;
+        let base_aligned = align_up(base_unaligned, alignment);
+        if base_aligned + size > VM_ASPACE_SIZE {
             return ax_err!(NoMemory, "No more shared memory region available");
         }
-        *shm_region_base += aligned_size;
+        *shm_region_base = base_aligned + size;
 
         debug!(
             "Allocating shared memory region: [{:#x}~{:#x}], shm_base extend to {:#x}",
-            base,
-            base + aligned_size,
+            base_aligned,
+            base_aligned + size,
             *shm_region_base
         );
 
-        Ok(GuestPhysAddr::from(base))
+        Ok(GuestPhysAddr::from(base_aligned))
     }
 
     /// Translates a guest physical address to a host physical address.
@@ -430,16 +435,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     )
                 })?;
 
-                if (0xd000_0000..0xd100_0000).contains(&mem_region.gpa) {
-                    warn!(
-                        "Ignoring host VM memory region: [{:#x}~{:#x}] {:?}",
-                        mem_region.gpa,
-                        mem_region.gpa + mem_region.size,
-                        mapping_flags
-                    );
-                    continue;
-                }
-
                 info!(
                     "Setting up host VM memory region: [{:#x}~{:#x}] {:?}",
                     mem_region.gpa,
@@ -467,21 +462,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     }
                 }
             }
-
-            warn!(
-                "Mapping host VM memory region: [{:#x}~{:#x}] {:?}",
-                0xd000_0000 as usize,
-                0xd000_0000 as usize + 0xff_ffff,
-                MappingFlags::READ | MappingFlags::WRITE
-            );
-
-            address_space.map_linear(
-                GuestPhysAddr::from(0xd000_0000),
-                HostPhysAddr::from(0xd000_0000),
-                0x100_0000,
-                MappingFlags::READ | MappingFlags::WRITE,
-                true,
-            )?;
 
             let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
                 emu_configs: config.emu_devices().to_vec(),
