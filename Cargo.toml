@@ -22,10 +22,10 @@ page_table_multiarch = "0.5"
 percpu = { version = "0.2.0", features = ["arm-el2"] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu.git" }
-axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
+axvcpu = "0.1"
+axaddrspace = "0.1"
 axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git" }
-axdevice_base = { git = "https://github.com/arceos-hypervisor/axdevice_crates.git" }
+axdevice_base = "0.1"
 axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
