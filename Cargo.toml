@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = ["vmx"]
 vmx = []
+4-level-page = ["arm_vcpu/4-level-page"]
 
 [dependencies]
 log = "0.4"
