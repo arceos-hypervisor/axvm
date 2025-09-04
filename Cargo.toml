@@ -6,7 +6,7 @@ edition = "2024"
 [features]
 default = ["vmx"]
 vmx = []
-4-level-page = ["arm_vcpu/4-level-page"]
+4-level-page = ["arm_vcpu/4-level-ept"]
 
 [dependencies]
 log = "0.4"
@@ -39,3 +39,5 @@ riscv_vcpu = { git = "https://github.com/arceos-hypervisor/riscv_vcpu.git" }
 arm_vcpu = { git = "https://github.com/arceos-hypervisor/arm_vcpu.git", branch = "dev-irq" }
 arm_vgic = { git = "https://github.com/arceos-hypervisor/arm_vgic.git", features = ["vgicv3"] }
 
+[patch.crates-io]
+axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace.git" }
