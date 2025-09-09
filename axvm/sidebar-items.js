@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["has_hardware_support"],"mod":["config"],"struct":["AxVM"],"trait":["AxVMHal"],"type":["AxVCpuRef","AxVMPerCpu","AxVMRef"]};
