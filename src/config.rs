@@ -44,7 +44,7 @@ pub struct AxVCpuConfig {
 }
 
 /// A part of `AxVMConfig`, which stores configuration attributes related to the load address of VM images.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct VMImageConfig {
     /// The load address in GPA for the kernel image.
     pub kernel_load_gpa: GuestPhysAddr,
