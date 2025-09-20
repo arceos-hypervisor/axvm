@@ -222,32 +222,26 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             use arm_vcpu::gic::*;
 
             // TODO: Parse phys cpu id from vm config
-            let id = config.id() - 1;
-            let cpu_id = id * 2;
+            let cpu_num = 4;
             let gic_config = GicDeviceConfig {
                 gicd_base: GICD_BASE.into(),
-                gicrs: vec![GicDistributorConfig {
-                    gicr_base: GICR_BASE[cpu_id].into(),
-                    cpu_id: cpu_id, // For logging purposes only.
+                gicrs: {
+                    let mut gicrs = Vec::with_capacity(cpu_num);
+                    for cpu_id in 0..cpu_num {
+                        gicrs.push(GicDistributorConfig {
+                            gicr_base: GICR_BASE[cpu_id].into(),
+                            cpu_id: cpu_id, // For logging purposes only.
+                        });
+                    }
+                    gicrs
                 },
-                GicDistributorConfig {
-                    gicr_base: GICR_BASE[cpu_id + 1].into(),
-                    cpu_id: cpu_id + 1, // For logging purposes only.
-                }],
                 assigned_spis: config
                     .pass_through_spis()
                     .iter()
                     .map(|spi| GicSpiAssignment {
                         spi: spi + 32,
-                        // rk3588 uart2 temp hack
-                        // target_cpu_phys_id: if *spi == 333 { 1 } else { cpu_id },
-                        // target_cpu_affinity: if *spi == 333 {
-                        //     (0, 0, 1, 0)
-                        // } else {
-                        //     (0, 0, cpu_id as _, 0)
-                        // },
-                        target_cpu_phys_id: cpu_id,
-                        target_cpu_affinity: (0, 0, cpu_id as _, 0),
+                        target_cpu_phys_id: 0,
+                        target_cpu_affinity: (0, 0, 0, 0),
                     })
                     .collect(),
                 gits_base: GITS_BASE.into(),
