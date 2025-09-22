@@ -530,8 +530,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         match addr_space.translated_byte_buffer(gpa_ptr, core::mem::size_of::<T>()) {
             Some(buffer) => {
+                if buffer.len() != 1 {
+                    return ax_err!(InvalidInput, "Buffer is not contiguous");
+                }
+
                 let bytes = unsafe {
-                    core::slice::from_raw_parts(buffer.as_ptr(), core::mem::size_of::<T>())
+                    core::slice::from_raw_parts(buffer[0].as_ptr(), core::mem::size_of::<T>())
                 };
                 let data: T = unsafe { core::ptr::read(bytes.as_ptr() as *const T) };
                 Ok(data)
