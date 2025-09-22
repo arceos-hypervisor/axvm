@@ -291,6 +291,18 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(image_load_hva)
     }
 
+    pub fn translate_guest_memory_range(
+        &self,
+        gpa: GuestPhysAddr,
+        size: usize,
+    ) -> AxResult<Vec<(HostPhysAddr, usize)>> {
+        let addr_space = self.inner_mut.address_space.lock();
+        let translated = addr_space
+            .translate_range(gpa, size)
+            .ok_or_else(|| ax_err_type!(NotFound, "Failed to translate guest memory range"))?;
+        Ok(translated)
+    }
+
     pub fn alloc_one_shm_region(&self, size: usize, alignment: usize) -> AxResult<GuestPhysAddr> {
         if !is_aligned(size, alignment) {
             error!("Size {:#x} is not aligned to {:#x}", size, alignment);
@@ -538,6 +550,39 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     core::slice::from_raw_parts(buffer[0].as_ptr(), core::mem::size_of::<T>())
                 };
                 let data: T = unsafe { core::ptr::read(bytes.as_ptr() as *const T) };
+                Ok(data)
+            }
+            None => ax_err!(InvalidInput, "Failed to translate guest physical address"),
+        }
+    }
+
+    pub fn read_from_guest_of_slice<T>(
+        &self,
+        gpa_ptr: GuestPhysAddr,
+        count: usize,
+    ) -> AxResult<Vec<T>> {
+        let addr_space = self.inner_mut.address_space.lock();
+
+        match addr_space.translated_byte_buffer(gpa_ptr, core::mem::size_of::<T>() * count) {
+            Some(buffer) => {
+                if buffer.len() != 1 {
+                    return ax_err!(InvalidInput, "Buffer is not contiguous");
+                }
+                let bytes = unsafe {
+                    core::slice::from_raw_parts(
+                        buffer[0].as_ptr(),
+                        core::mem::size_of::<T>() * count,
+                    )
+                };
+                let mut data = Vec::with_capacity(count);
+                for i in 0..count {
+                    let item: T = unsafe {
+                        core::ptr::read(
+                            bytes.as_ptr().add(i * core::mem::size_of::<T>()) as *const T
+                        )
+                    };
+                    data.push(item);
+                }
                 Ok(data)
             }
             None => ax_err!(InvalidInput, "Failed to translate guest physical address"),
