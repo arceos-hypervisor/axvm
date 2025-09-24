@@ -398,12 +398,37 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         .handle_mmio_write(*addr, (*width).into(), *data as usize);
                     true
                 }
-                AxVCpuExitReason::IoRead { port: _, width: _ } => true,
-                AxVCpuExitReason::IoWrite {
-                    port: _,
-                    width: _,
-                    data: _,
-                } => true,
+                AxVCpuExitReason::IoRead { port, width } => {
+                    use axvcpu::AccessWidth;
+                    use axvcpu::AxVcpuAccessGuestState;
+                    let value = self
+                        .get_devices()
+                        .handle_pio_read(*port, width.size() as _)?;
+
+                    const RAX_INDEX: usize = 0;
+
+                    let mut rax = vcpu.get_arch_vcpu().read_gpr(RAX_INDEX);
+
+                    match width {
+                        AccessWidth::Byte => rax = (rax & !0xff) | (value & 0xff) as usize,
+                        AccessWidth::Word => rax = (rax & !0xffff) | (value & 0xffff) as usize,
+                        AccessWidth::Dword => {
+                            rax = (rax & !0xffff_ffff) | (value & 0xffff_ffff) as usize
+                        }
+                        AccessWidth::Qword => {
+                            return ax_err!(InvalidInput, "IoRead AccessWidth can not be Qword");
+                        }
+                    }
+
+                    vcpu.set_gpr(RAX_INDEX, rax);
+
+                    true
+                }
+                AxVCpuExitReason::IoWrite { port, width, data } => {
+                    self.get_devices()
+                        .handle_pio_write(*port, width.size() as _, *data as _)?;
+                    true
+                }
                 AxVCpuExitReason::NestedPageFault { addr, access_flags } => self
                     .inner_mut
                     .address_space
