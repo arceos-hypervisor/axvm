@@ -183,9 +183,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 )?;
             }
 
-            let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
-                emu_configs: config.emu_devices().to_vec(),
-            });
+            let devices = axdevice::AxVmDevices::new(
+                AxVmDeviceConfig {
+                    emu_configs: config.emu_devices().to_vec(),
+                },
+                false,
+            );
 
             Self {
                 running: AtomicBool::new(false),
@@ -475,9 +478,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 }
             }
 
-            let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
-                emu_configs: config.emu_devices().to_vec(),
-            });
+            let devices = axdevice::AxVmDevices::new(
+                AxVmDeviceConfig {
+                    emu_configs: config.emu_devices().to_vec(),
+                },
+                true,
+            );
 
             let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
 
