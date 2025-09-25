@@ -55,6 +55,7 @@ pub struct AxVMConfig {
     pub image_config: VMImageConfig,
     emu_devices: Vec<EmulatedDeviceConfig>,
     pass_through_devices: Vec<PassThroughDeviceConfig>,
+    excluded_devices: Vec<Vec<String>>,
     // TODO: improve interrupt passthrough
     spi_list: Vec<u32>,
     interrupt_mode: VMInterruptMode,
@@ -84,6 +85,7 @@ impl From<AxVMCrateConfig> for AxVMConfig {
             // memory_regions: cfg.kernel.memory_regions,
             emu_devices: cfg.devices.emu_devices,
             pass_through_devices: cfg.devices.passthrough_devices,
+            excluded_devices: cfg.devices.excluded_devices,
             spi_list: Vec::new(),
             interrupt_mode: cfg.devices.interrupt_mode,
         }
@@ -118,6 +120,13 @@ impl AxVMConfig {
         self.cpu_config.ap_entry
     }
 
+    pub fn phys_cpu_ls_mut(&mut self) -> &mut PhysCpuList {
+        &mut self.phys_cpu_ls
+    }
+
+    pub fn excluded_devices(&self) -> &Vec<Vec<String>> {
+        &self.excluded_devices
+    }
     // /// Returns configurations related to VM memory regions.
     // pub fn memory_regions(&self) -> Vec<VmMemConfig> {
     //     &self.memory_regions
@@ -148,6 +157,16 @@ impl AxVMConfig {
     /// Adds a new passthrough device to the VM configuration.
     pub fn add_pass_through_device(&mut self, device: PassThroughDeviceConfig) {
         self.pass_through_devices.push(device);
+    }
+
+    /// Removes passthrough device from the VM configuration.
+    pub fn remove_pass_through_device(&mut self, device: PassThroughDeviceConfig) {
+        self.pass_through_devices.retain(|d| d == &device);
+    }
+
+    /// Clears all passthrough devices from the VM configuration.
+    pub fn clear_pass_through_devices(&mut self) {
+        self.pass_through_devices.clear();
     }
 
     /// Adds a passthrough SPI to the VM configuration.
@@ -184,6 +203,11 @@ impl PhysCpuList {
     /// - The physical id of the vCpu, equal to vCpu id if not provided.
     pub fn get_vcpu_affinities_pcpu_ids(&self) -> Vec<(usize, Option<usize>, usize)> {
         let mut vcpu_pcpu_tuples = Vec::new();
+
+        if  self.cpu_num != self.phys_cpu_ids.as_ref().unwrap().len() {
+            error!("ERROR!!!: cpu_num: {}, phys_cpu_ids: {:?}", self.cpu_num, self.phys_cpu_ids);
+        }
+
         for vcpu_id in 0..self.cpu_num {
             vcpu_pcpu_tuples.push((vcpu_id, None, vcpu_id));
         }
@@ -212,5 +236,9 @@ impl PhysCpuList {
 
     pub fn phys_cpu_sets(&self) -> &Option<Vec<usize>> {
         &self.phys_cpu_sets
+    }
+
+    pub fn set_guest_cpu_sets(&mut self, phys_cpu_sets: Vec<usize>) {
+        self.phys_cpu_sets = Some(phys_cpu_sets);
     }
 }
