@@ -217,8 +217,11 @@ impl PhysCpuList {
     pub fn get_vcpu_affinities_pcpu_ids(&self) -> Vec<(usize, Option<usize>, usize)> {
         let mut vcpu_pcpu_tuples = Vec::new();
 
-        if  self.cpu_num != self.phys_cpu_ids.as_ref().unwrap().len() {
-            error!("ERROR!!!: cpu_num: {}, phys_cpu_ids: {:?}", self.cpu_num, self.phys_cpu_ids);
+        if self.cpu_num != self.phys_cpu_ids.as_ref().unwrap().len() {
+            error!(
+                "ERROR!!!: cpu_num: {}, phys_cpu_ids: {:?}",
+                self.cpu_num, self.phys_cpu_ids
+            );
         }
 
         for vcpu_id in 0..self.cpu_num {
