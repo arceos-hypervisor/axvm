@@ -652,4 +652,28 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     pub fn memory_regions(&self) -> Vec<VMMemoryRegion> {
         self.inner_mut.lock().memory_regions.clone()
     }
+
+    pub fn map_reserved_memory_region(
+        &self,
+        layout: Layout,
+        gpa: Option<GuestPhysAddr>,
+    ) -> AxResult<&[u8]> {
+        assert!(
+            layout.size() > 0,
+            "Cannot allocate zero-sized memory region"
+        );
+        let mut g = self.inner_mut.lock();
+        g.address_space.map_linear(
+            gpa.unwrap(),
+            gpa.unwrap().as_usize().into(),
+            layout.size(),
+            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE | MappingFlags::USER,
+        )?;
+        let hva = gpa.unwrap().as_usize().into();
+        let tem_hva = gpa.unwrap().as_usize() as *mut u8;
+        let s = unsafe { core::slice::from_raw_parts_mut(tem_hva, layout.size()) };
+        let gpa = gpa.unwrap();
+        g.memory_regions.push(VMMemoryRegion { gpa, hva, layout });
+        Ok(s)
+    }
 }
