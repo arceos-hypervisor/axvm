@@ -652,7 +652,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     pub fn memory_regions(&self) -> Vec<VMMemoryRegion> {
         self.inner_mut.lock().memory_regions.clone()
     }
-    
+
     pub fn map_reserved_memory_region(
         &self,
         layout: Layout,
