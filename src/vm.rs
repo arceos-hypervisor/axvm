@@ -161,6 +161,16 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             ));
         }
 
+        for pt_addr in inner_mut.config.pass_through_addresses() {
+            debug!(
+                "PT addr region: [{:#x}~{:#x}]",
+                pt_addr.base_gpa,
+                pt_addr.base_gpa + pt_addr.length,
+            );
+            // Align the base address and length to 4K boundaries.
+            pt_dev_region.push((align_down_4k(pt_addr.base_gpa), align_up_4k(pt_addr.length)));
+        }
+
         pt_dev_region.sort_by_key(|(gpa, _)| *gpa);
 
         // Merge overlapping regions.
