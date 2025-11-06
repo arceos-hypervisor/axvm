@@ -7,8 +7,8 @@ use alloc::vec::Vec;
 use axaddrspace::GuestPhysAddr;
 
 pub use axvmconfig::{
-    AxVMCrateConfig, EmulatedDeviceConfig, PassThroughDeviceConfig, VMInterruptMode, VMType,
-    VmMemConfig, VmMemMappingType, PassThroughAddressConfig,
+    AxVMCrateConfig, EmulatedDeviceConfig, PassThroughAddressConfig, PassThroughDeviceConfig,
+    VMInterruptMode, VMType, VmMemConfig, VmMemMappingType,
 };
 
 // /// A part of `AxVCpuConfig`, which represents an architecture-dependent `VCpu`.
