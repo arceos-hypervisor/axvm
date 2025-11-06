@@ -21,8 +21,8 @@ use alloc::vec::Vec;
 use axaddrspace::GuestPhysAddr;
 
 pub use axvmconfig::{
-    AxVMCrateConfig, EmulatedDeviceConfig, PassThroughDeviceConfig, VMInterruptMode, VMType,
-    VmMemConfig, VmMemMappingType,
+    AxVMCrateConfig, EmulatedDeviceConfig, PassThroughAddressConfig, PassThroughDeviceConfig,
+    VMInterruptMode, VMType, VmMemConfig, VmMemMappingType,
 };
 
 // /// A part of `AxVCpuConfig`, which represents an architecture-dependent `VCpu`.
@@ -69,6 +69,7 @@ pub struct AxVMConfig {
     emu_devices: Vec<EmulatedDeviceConfig>,
     pass_through_devices: Vec<PassThroughDeviceConfig>,
     excluded_devices: Vec<Vec<String>>,
+    pass_through_addresses: Vec<PassThroughAddressConfig>,
     // TODO: improve interrupt passthrough
     spi_list: Vec<u32>,
     interrupt_mode: VMInterruptMode,
@@ -99,6 +100,7 @@ impl From<AxVMCrateConfig> for AxVMConfig {
             emu_devices: cfg.devices.emu_devices,
             pass_through_devices: cfg.devices.passthrough_devices,
             excluded_devices: cfg.devices.excluded_devices,
+            pass_through_addresses: cfg.devices.passthrough_addresses,
             spi_list: Vec::new(),
             interrupt_mode: cfg.devices.interrupt_mode,
         }
@@ -139,6 +141,10 @@ impl AxVMConfig {
 
     pub fn excluded_devices(&self) -> &Vec<Vec<String>> {
         &self.excluded_devices
+    }
+
+    pub fn pass_through_addresses(&self) -> &Vec<PassThroughAddressConfig> {
+        &self.pass_through_addresses
     }
     // /// Returns configurations related to VM memory regions.
     // pub fn memory_regions(&self) -> Vec<VmMemConfig> {

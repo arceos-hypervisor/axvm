@@ -45,3 +45,6 @@ riscv_vcpu = "0.1"
 arm_vcpu = { git = "https://github.com/arceos-hypervisor/arm_vcpu", branch = "next" }
 arm_vgic = { version = "0.1", features = ["vgicv3"] }
 
+[patch.crates-io]
+axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next" }
+axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
