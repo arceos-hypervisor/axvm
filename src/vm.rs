@@ -435,7 +435,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     )
                 })?;
 
-                info!(
+                debug!(
                     "Setting up host VM memory region: [{:#x}~{:#x}] {:?}",
                     mem_region.gpa,
                     mem_region.gpa + mem_region.size,
