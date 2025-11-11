@@ -13,9 +13,15 @@ extern crate alloc;
 #[macro_use]
 extern crate log;
 
+#[cfg_attr(target_arch = "aarch64", path = "arch/aarch64/mod.rs")]
+#[cfg_attr(target_arch = "x86_64", path = "arch/x86_64/mod.rs")]
+pub mod arch;
+
+mod fdt;
 mod hal;
 mod vcpu;
 mod vm;
+mod vm2;
 
 pub mod config;
 
