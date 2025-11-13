@@ -99,7 +99,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     /// The VM is not started until `boot` is called.
     pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>> {
         let address_space =
-            AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
+            AddrSpace::new_empty(4, GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
 
         let result = Arc::new(Self {
             id: config.id(),

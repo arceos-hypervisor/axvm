@@ -414,60 +414,60 @@ impl Vm {
         gpa: Option<GuestPhysAddr>,
     ) -> anyhow::Result<(GuestPhysAddr, HostPhysAddr)> {
         todo!()
-    //     // Allocate memory
-    //     let layout = Layout::from_size_align(size, 4096)
-    //         .map_err(|_| ax_err!(InvalidInput, "Invalid size or alignment"))?;
+        //     // Allocate memory
+        //     let layout = Layout::from_size_align(size, 4096)
+        //         .map_err(|_| ax_err!(InvalidInput, "Invalid size or alignment"))?;
 
-    //     let hva = unsafe { alloc::alloc_zeroed(layout) };
-    //     if hva.is_null() {
-    //         return ax_err!(NoMemory, "Failed to allocate memory");
-    //     }
+        //     let hva = unsafe { alloc::alloc_zeroed(layout) };
+        //     if hva.is_null() {
+        //         return ax_err!(NoMemory, "Failed to allocate memory");
+        //     }
 
-    //     let hva = axaddrspace::HostVirtAddr::from(hva as usize);
-    //     // TODO: Replace with actual implementation
-    //     let hpa = HostPhysAddr::from(hva.as_usize());
+        //     let hva = axaddrspace::HostVirtAddr::from(hva as usize);
+        //     // TODO: Replace with actual implementation
+        //     let hpa = HostPhysAddr::from(hva.as_usize());
 
-    //     // Use provided GPA or use HPA as GPA
-    //     let gpa = gpa.unwrap_or_else(|| GuestPhysAddr::from(hpa.as_usize()));
+        //     // Use provided GPA or use HPA as GPA
+        //     let gpa = gpa.unwrap_or_else(|| GuestPhysAddr::from(hpa.as_usize()));
 
-    //     // Map the memory
-    //     self.map_region(
-    //         gpa,
-    //         hpa,
-    //         size,
-    //         MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE | MappingFlags::USER,
-    //     )?;
+        //     // Map the memory
+        //     self.map_region(
+        //         gpa,
+        //         hpa,
+        //         size,
+        //         MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE | MappingFlags::USER,
+        //     )?;
 
-    //     debug!(
-    //         "Allocated memory region GPA {:#x} -> HPA {:#x}, size {:#x}",
-    //         gpa, hpa, size
-    //     );
+        //     debug!(
+        //         "Allocated memory region GPA {:#x} -> HPA {:#x}, size {:#x}",
+        //         gpa, hpa, size
+        //     );
 
-    //     Ok((gpa, hpa))
-    // }
+        //     Ok((gpa, hpa))
+        // }
 
-    // /// Reads data from guest memory
-    // pub fn read_guest_memory(&self, gpa: GuestPhysAddr, buf: &mut [u8]) -> AxResult<()> {
-    //     let address_space = match self.get_address_space() {
-    //         Some(aspace) => aspace,
-    //         None => return ax_err!(BadState, "VM is not initialized"),
-    //     };
+        // /// Reads data from guest memory
+        // pub fn read_guest_memory(&self, gpa: GuestPhysAddr, buf: &mut [u8]) -> AxResult<()> {
+        //     let address_space = match self.get_address_space() {
+        //         Some(aspace) => aspace,
+        //         None => return ax_err!(BadState, "VM is not initialized"),
+        //     };
 
-    //     let buffers = match address_space.translated_byte_buffer(gpa, buf.len()) {
-    //         Some(buffers) => buffers,
-    //         None => return ax_err!(InvalidInput, "Failed to translate guest address"),
-    //     };
+        //     let buffers = match address_space.translated_byte_buffer(gpa, buf.len()) {
+        //         Some(buffers) => buffers,
+        //         None => return ax_err!(InvalidInput, "Failed to translate guest address"),
+        //     };
 
-    //     let mut offset = 0;
-    //     for chunk in buffers {
-    //         let copy_len = core::cmp::min(chunk.len(), buf.len() - offset);
-    //         buf[offset..offset + copy_len].copy_from_slice(&chunk[..copy_len]);
-    //         offset += copy_len;
+        //     let mut offset = 0;
+        //     for chunk in buffers {
+        //         let copy_len = core::cmp::min(chunk.len(), buf.len() - offset);
+        //         buf[offset..offset + copy_len].copy_from_slice(&chunk[..copy_len]);
+        //         offset += copy_len;
 
-    //         if offset >= buf.len() {
-    //             break;
-    //         }
-    //     }
+        //         if offset >= buf.len() {
+        //             break;
+        //         }
+        //     }
 
         // Ok(())
     }
@@ -722,7 +722,7 @@ impl Vm {
                 // Transition to ShuttingDown state
                 let new_data = RunData {
                     vcpus: BTreeMap::new(),
-                    address_space: AddrSpace::new_empty(GuestPhysAddr::from(0), 0).unwrap(),
+                    address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
                     devices: BTreeMap::new(),
                 };
                 let old_data = core::mem::replace(data, new_data);
@@ -784,7 +784,7 @@ impl VmOps for Vm {
         // Transition to Running state
         let new_data = RunData {
             vcpus: BTreeMap::new(),
-            address_space: AddrSpace::new_empty(GuestPhysAddr::from(0), 0).unwrap(),
+            address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
             devices: BTreeMap::new(),
         };
         let old_data = core::mem::replace(data, new_data);
@@ -899,7 +899,7 @@ impl Vm {
         // Transition to Inited state
         let new_data = RunData {
             vcpus: BTreeMap::new(),
-            address_space: AddrSpace::new_empty(GuestPhysAddr::from(0), 0).unwrap(),
+            address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
             devices: BTreeMap::new(),
         };
         let old_data = core::mem::replace(data, new_data);
@@ -928,7 +928,7 @@ impl Vm {
         // Transition to Running state
         let new_data = RunData {
             vcpus: BTreeMap::new(),
-            address_space: AddrSpace::new_empty(GuestPhysAddr::from(0), 0).unwrap(),
+            address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
             devices: BTreeMap::new(),
         };
         let old_data = core::mem::replace(data, new_data);

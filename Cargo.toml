@@ -12,7 +12,9 @@ license = "Apache-2.0"
 [features]
 default = ["vmx"]
 vmx = []
-4-level-ept = ["axaddrspace/4-level-ept"]   # TODO: Realize 4-level-ept on x86_64 and riscv64.
+4-level-ept = []
+# Note: 4-level-ept support is now provided through dynamic page table selection in axaddrspace
+# The feature gate is no longer needed
 
 [dependencies]
 log = "0.4"
