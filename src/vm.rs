@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use axaddrspace::HostVirtAddr;
 use axerrno::{AxError, AxResult, ax_err, ax_err_type};
 use core::alloc::Layout;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::fmt;
 use memory_addr::{align_down_4k, align_up_4k};
 use spin::{Mutex, Once};
 
@@ -48,6 +48,8 @@ pub struct VMMemoryRegion {
     pub gpa: GuestPhysAddr,
     pub hva: HostVirtAddr,
     pub layout: Layout,
+    /// Whether this region was allocated by the allocator and needs to be deallocated
+    pub needs_dealloc: bool,
 }
 
 impl VMMemoryRegion {
@@ -65,7 +67,57 @@ struct AxVMInnerMut<H: AxVMHal> {
     address_space: AddrSpace<H::PagingHandler>,
     memory_regions: Vec<VMMemoryRegion>,
     config: AxVMConfig,
+    vm_status: VMStatus,
     _marker: core::marker::PhantomData<H>,
+}
+
+/// VM status enumeration representing the lifecycle states of a virtual machine
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VMStatus {
+    /// VM is being created/loaded
+    Loading,
+    /// VM is loaded but not yet started
+    Loaded,
+    /// VM is currently running
+    Running,
+    /// VM is suspended (paused but can be resumed)
+    Suspended,
+    /// VM is in the process of shutting down
+    Stopping,
+    /// VM is stopped
+    Stopped,
+}
+
+impl VMStatus {
+    /// Get status as a string (lowercase)
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VMStatus::Loading => "loading",
+            VMStatus::Loaded => "loaded",
+            VMStatus::Running => "running",
+            VMStatus::Suspended => "suspended",
+            VMStatus::Stopping => "stopping",
+            VMStatus::Stopped => "stopped",
+        }
+    }
+
+    /// Get status with emoji icon
+    pub fn as_str_with_icon(&self) -> &'static str {
+        match self {
+            VMStatus::Loading => "🔄 loading",
+            VMStatus::Loaded => "📦 loaded",
+            VMStatus::Running => "🚀 running",
+            VMStatus::Suspended => "🛑 suspended",
+            VMStatus::Stopping => "⏹️ stopping",
+            VMStatus::Stopped => "💤 stopped",
+        }
+    }
+}
+
+impl fmt::Display for VMStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 const TEMP_MAX_VCPU_NUM: usize = 64;
@@ -73,8 +125,6 @@ const TEMP_MAX_VCPU_NUM: usize = 64;
 /// A Virtual Machine.
 pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
     id: usize,
-    running: AtomicBool,
-    shutting_down: AtomicBool,
     inner_const: Once<AxVMInnerConst<U>>,
     inner_mut: Mutex<AxVMInnerMut<H>>,
 }
@@ -89,13 +139,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
         let result = Arc::new(Self {
             id: config.id(),
-            running: AtomicBool::new(false),
-            shutting_down: AtomicBool::new(false),
             inner_const: Once::new(),
             inner_mut: Mutex::new(AxVMInnerMut {
                 address_space,
                 config,
                 memory_regions: Vec::new(),
+                vm_status: VMStatus::Loading,
                 _marker: core::marker::PhantomData,
             }),
         });
@@ -287,6 +336,16 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(())
     }
 
+    pub fn set_vm_status(&self, status: VMStatus) {
+        let mut inner_mut = self.inner_mut.lock();
+        inner_mut.vm_status = status;
+    }
+
+    pub fn vm_status(&self) -> VMStatus {
+        let inner_mut = self.inner_mut.lock();
+        inner_mut.vm_status
+    }
+
     /// Retrieves the vCPU corresponding to the given vcpu_id for the VM.
     /// Returns None if the vCPU does not exist.
     #[inline]
@@ -347,12 +406,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(image_load_hva)
     }
 
-    /// Returns if the VM is running.
-    pub fn running(&self) -> bool {
-        self.running.load(Ordering::Relaxed)
-    }
-
-    /// Boots the VM by setting the running flag as true.
+    /// Boots the VM by transitioning to Running state.
     pub fn boot(&self) -> AxResult {
         if !has_hardware_support() {
             ax_err!(Unsupported, "Hardware does not support virtualization")
@@ -360,29 +414,44 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             ax_err!(BadState, format!("VM[{}] is already running", self.id()))
         } else {
             info!("Booting VM[{}]", self.id());
-            self.running.store(true, Ordering::Relaxed);
+            self.set_vm_status(VMStatus::Running);
             Ok(())
         }
     }
 
-    /// Returns if the VM is shutting down.
-    pub fn shutting_down(&self) -> bool {
-        self.shutting_down.load(Ordering::Relaxed)
+    /// Returns if the VM is running.
+    pub fn running(&self) -> bool {
+        self.vm_status() == VMStatus::Running
     }
 
-    /// Shuts down the VM by setting the shutting_down flag as true.
+    /// Returns if the VM is shutting down (in Stopping state).
+    pub fn stopping(&self) -> bool {
+        self.vm_status() == VMStatus::Stopping
+    }
+
+    /// Returns if the VM is suspended.
+    pub fn suspending(&self) -> bool {
+        self.vm_status() == VMStatus::Suspended
+    }
+
+    /// Returns if the VM is stopped.
+    pub fn stopped(&self) -> bool {
+        self.vm_status() == VMStatus::Stopped
+    }
+
+    /// Shuts down the VM by transitioning to Stopping state.
     ///
+    /// This method sets the VM status to Stopping, which signals all vCPUs to exit.
     /// Currently, the "re-init" process of the VM is not implemented. Therefore, a VM can only be
     /// booted once. And after the VM is shut down, it cannot be booted again.
     pub fn shutdown(&self) -> AxResult {
-        if self.shutting_down() {
-            ax_err!(
-                BadState,
-                format!("VM[{}] is already shutting down", self.id())
-            )
+        if self.stopping() {
+            ax_err!(BadState, format!("VM[{}] is already stopping", self.id()))
+        } else if self.stopped() {
+            ax_err!(BadState, format!("VM[{}] is already stopped", self.id()))
         } else {
             info!("Shutting down VM[{}]", self.id());
-            self.shutting_down.store(true, Ordering::Relaxed);
+            self.set_vm_status(VMStatus::Stopping);
             Ok(())
         }
     }
@@ -654,7 +723,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             layout.size(),
             MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE | MappingFlags::USER,
         )?;
-        g.memory_regions.push(VMMemoryRegion { gpa, hva, layout });
+        g.memory_regions.push(VMMemoryRegion {
+            gpa,
+            hva,
+            layout,
+            needs_dealloc: true, // This region was allocated and needs to be freed
+        });
 
         Ok(s)
     }
@@ -683,7 +757,132 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let tem_hva = gpa.unwrap().as_usize() as *mut u8;
         let s = unsafe { core::slice::from_raw_parts_mut(tem_hva, layout.size()) };
         let gpa = gpa.unwrap();
-        g.memory_regions.push(VMMemoryRegion { gpa, hva, layout });
+        g.memory_regions.push(VMMemoryRegion {
+            gpa,
+            hva,
+            layout,
+            needs_dealloc: false, // This is a reserved region, not allocated
+        });
         Ok(s)
+    }
+
+    /// Cleanup resources for the VM before drop.
+    /// This is called internally by the Drop implementation.
+    fn cleanup_resources(&self) {
+        info!("Cleaning up VM[{}] resources...", self.id());
+
+        // 1. Ensure the VM is in Stopping or Stopped state
+        let current_status = self.vm_status();
+        if !matches!(current_status, VMStatus::Stopping | VMStatus::Stopped) {
+            warn!(
+                "VM[{}] is being dropped without explicit shutdown (status: {:?}), marking as stopping",
+                self.id(),
+                current_status
+            );
+            self.set_vm_status(VMStatus::Stopping);
+        }
+
+        let mut inner_mut = self.inner_mut.lock();
+
+        // First, collect all memory regions to clean up
+        // We need to clone the regions to avoid borrowing issues
+        let regions_to_cleanup: Vec<VMMemoryRegion> = inner_mut.memory_regions.clone();
+
+        // Unmap all memory regions from the address space
+        // This must be done BEFORE deallocating memory to avoid use-after-free
+        for region in &regions_to_cleanup {
+            debug!(
+                "VM[{}] unmapping memory region: GPA={:#x}, size={:#x}",
+                self.id(),
+                region.gpa.as_usize(),
+                region.size()
+            );
+            // Unmap the region from guest physical address space
+            if let Err(e) = inner_mut.address_space.unmap(region.gpa, region.size()) {
+                warn!(
+                    "VM[{}] failed to unmap region at GPA={:#x}: {:?}",
+                    self.id(),
+                    region.gpa.as_usize(),
+                    e
+                );
+            }
+        }
+
+        // Now it's safe to deallocate the memory
+        for region in &regions_to_cleanup {
+            // Only deallocate memory regions that were allocated by the allocator
+            if region.needs_dealloc {
+                debug!(
+                    "VM[{}] deallocating memory region: HVA={:#x}, size={:#x}",
+                    self.id(),
+                    region.hva.as_usize(),
+                    region.size()
+                );
+                unsafe {
+                    alloc::alloc::dealloc(region.hva.as_mut_ptr(), region.layout);
+                }
+            } else {
+                debug!(
+                    "VM[{}] skipping dealloc for reserved memory region: GPA={:#x}, HVA={:#x}, size={:#x}",
+                    self.id(),
+                    region.gpa.as_usize(),
+                    region.hva.as_usize(),
+                    region.size()
+                );
+            }
+        }
+        inner_mut.memory_regions.clear();
+
+        // Clear remaining address space mappings
+        // This includes:
+        // - Passthrough device MMIO mappings
+        // - Emulated device MMIO mappings
+        // - Reserved memory mappings
+        // - All other page table entries
+        debug!(
+            "VM[{}] clearing remaining address space mappings",
+            self.id()
+        );
+        inner_mut.address_space.clear();
+
+        // Release the lock before accessing inner_const
+        drop(inner_mut);
+
+        // Device cleanup
+        // Although devices will be automatically dropped when inner_const is dropped,
+        // we should perform explicit cleanup if devices hold resources like:
+        // - Hardware interrupt registrations
+        // - DMA mappings
+        // - Background threads or timers
+        if let Some(inner_const) = self.inner_const.get() {
+            debug!(
+                "VM[{}] devices cleanup: {} MMIO devices, {} SysReg devices",
+                self.id(),
+                inner_const.devices.iter_mmio_dev().count(),
+                inner_const.devices.iter_sys_reg_dev().count()
+            );
+
+            // TODO: Add device-specific cleanup if needed
+            // For example:
+            // - Stop device background tasks
+            // - Unregister interrupts
+            // - Release device-specific resources
+
+            // Note: Device Arc references will be dropped automatically when
+            // inner_const is dropped at the end of AxVM's drop
+        }
+
+        info!("VM[{}] resources cleanup completed", self.id());
+    }
+}
+
+impl<H: AxVMHal, U: AxVCpuHal> Drop for AxVM<H, U> {
+    fn drop(&mut self) {
+        info!("Dropping VM[{}]", self.id());
+
+        // Clean up all allocated resources
+        self.cleanup_resources();
+
+        info!("VM[{}] dropped", self.id());
     }
 }
