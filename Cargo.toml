@@ -1,4 +1,5 @@
 [package]
+edition = "2024"
 name = "axvm"
 authors = ["aarkegz <aarkegz@gmail.com>"]
 version = "0.2.0"
@@ -10,33 +11,33 @@ keywords = ["vm", "hypervisor", "arceos"]
 license = "Apache-2.0"
 
 [features]
+4-level-ept = []
 default = ["vmx"]
 vmx = []
-4-level-ept = []
 # Note: 4-level-ept support is now provided through dynamic page table selection in axaddrspace
 # The feature gate is no longer needed
 
 [dependencies]
-log = "0.4"
-cfg-if = "1.0"
-spin = "0.9"
 anyhow = {version = "1.0", default-features = false}
+cfg-if = "1.0"
+log = "0.4"
+spin = "0.9"
 
 # System independent crates provided by ArceOS.
 axerrno = "0.1.0"
 cpumask = "0.1.0"
 # kspin = "0.1.0"
 memory_addr = "0.4"
-page_table_entry = { version = "0.5", features = ["arm-el2"] }
+page_table_entry = {version = "0.5", features = ["arm-el2"]}
 page_table_multiarch = "0.5"
-percpu = { version = "0.2.0", features = ["arm-el2"] }
+percpu = {version = "0.2.0", features = ["arm-el2"]}
 
 # System dependent modules provided by ArceOS-Hypervisor.
-axvcpu = "0.1"
-axaddrspace = "0.1"
-axdevice = "0.2"
+axaddrspace = "0.2"
+axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
 axdevice_base = "0.1"
-axvmconfig = { version = "0.1", default-features = false }
+axvcpu = "0.1"
+axvmconfig = {version = "0.1", default-features = false}
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_vcpu = "0.1"
@@ -45,10 +46,11 @@ x86_vcpu = "0.1"
 riscv_vcpu = "0.1"
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
-arm_vcpu = { git = "https://github.com/arceos-hypervisor/arm_vcpu", branch = "next" }
-arm_vgic = { version = "0.1", features = ["vgicv3"] }
 aarch64-cpu-ext = "0.1"
+arm_vcpu = "0.1"
+arm_vgic = {version = "0.1", features = ["vgicv3"]}
 
 [patch.crates-io]
-axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next" }
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
+axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
+arm_vcpu = {git = "https://github.com/arceos-hypervisor/arm_vcpu", branch = "next"}
