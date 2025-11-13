@@ -58,7 +58,7 @@ impl VmOps for Vm {
     }
 
     fn status(&self) -> Status {
-        (&(&self.state).unwrap()).into()
+        (&self.state).as_ref().unwrap().into()
     }
 }
 
