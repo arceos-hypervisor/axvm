@@ -14,11 +14,9 @@ use crate::vhal::ArchHal;
 
 use axaddrspace::{AddrSpace, AxMmHal, GuestPhysAddr, HostPhysAddr, MappingFlags};
 use axerrno::{AxResult, ax_err};
-use axvcpu::{AxArchVCpu, AxVCpu, AxVCpuHal};
 use page_table_multiarch::PagingHandler;
 
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig, AxVCpuSetupConfig};
-use crate::{config::AxVMConfig, vm2::*};
+use crate::{config::AxVMConfig, vm::*};
 
 pub mod cpu;
 
@@ -47,9 +45,9 @@ impl ArchHal for Hal {
 }
 
 /// A virtual CPU with architecture-independent interface.
-type VCpu<U> = AxVCpu<AxArchVCpuImpl<U>>;
+// type VCpu<U> = AxVCpu<AxArchVCpuImpl<U>>;
 /// A reference to a vCPU.
-pub type AxVCpuRef<U> = Arc<VCpu<U>>;
+// pub type AxVCpuRef<U> = Arc<VCpu<U>>;
 
 // Implement Display for VmId
 impl fmt::Display for VmId {
@@ -58,54 +56,10 @@ impl fmt::Display for VmId {
     }
 }
 
-// 临时占位符实现，实际使用时需要替换为正确的实现
-// 使用newtype模式来避免orphan rule
-struct DummyHal;
-impl AxVCpuHal for DummyHal {
-    type MmHal = DummyPagingHandler;
-}
-
-struct DummyPagingHandler;
-impl AxMmHal for DummyPagingHandler {
-    fn alloc_frame() -> Option<HostPhysAddr> {
-        todo!("alloc_frame")
-    }
-
-    fn dealloc_frame(_paddr: HostPhysAddr) {
-        todo!("dealloc_frame")
-    }
-
-    fn phys_to_virt(_paddr: HostPhysAddr) -> VirtAddr {
-        // 临时实现，返回一个虚拟地址
-        // 实际实现需要根据具体的内存映射方案
-        VirtAddr::from(0x40000000usize)
-    }
-
-    fn virt_to_phys(_vaddr: VirtAddr) -> HostPhysAddr {
-        todo!("virt_to_phys")
-    }
-}
-
-impl PagingHandler for DummyPagingHandler {
-    fn alloc_frame() -> Option<HostPhysAddr> {
-        todo!("alloc_frame")
-    }
-
-    fn dealloc_frame(_paddr: HostPhysAddr) {
-        todo!("dealloc_frame")
-    }
-
-    fn phys_to_virt(_paddr: HostPhysAddr) -> VirtAddr {
-        // 临时实现，返回一个虚拟地址
-        // 实际实现需要根据具体的内存映射方案
-        VirtAddr::from(0x40000000usize)
-    }
-}
-
 /// Data needed when VM is running
 pub struct RunData {
-    vcpus: BTreeMap<usize, AxVCpuRef<DummyHal>>,
-    address_space: AddrSpace<DummyPagingHandler>,
+    // vcpus: BTreeMap<usize, AxVCpuRef<DummyHal>>,
+    // address_space: AddrSpace<DummyPagingHandler>,
     devices: BTreeMap<String, DeviceInfo>,
 }
 
@@ -363,379 +317,6 @@ impl Vm {
         Ok(())
     }
 
-    /// Gets the vCPU with the given ID
-    fn get_vcpu(&self, vcpu_id: usize) -> Option<AxVCpuRef<DummyHal>> {
-        match self.get_state() {
-            StateMachine::Inited(data)
-            | StateMachine::Running(data)
-            | StateMachine::ShuttingDown(data) => data.vcpus.get(&vcpu_id).cloned(),
-            _ => None,
-        }
-    }
-
-    /// Gets all vCPUs of VM
-    fn get_vcpus(&self) -> Vec<AxVCpuRef<DummyHal>> {
-        match self.get_state() {
-            StateMachine::Inited(data)
-            | StateMachine::Running(data)
-            | StateMachine::ShuttingDown(data) => data.vcpus.values().cloned().collect(),
-            _ => Vec::new(),
-        }
-    }
-
-    /// Gets address space of VM
-    fn get_address_space(&self) -> Option<&AddrSpace<DummyPagingHandler>> {
-        match self.get_state() {
-            StateMachine::Inited(data)
-            | StateMachine::Running(data)
-            | StateMachine::ShuttingDown(data) => Some(&data.address_space),
-            _ => None,
-        }
-    }
-
-    /// Maps a memory region in VM
-    fn map_region(
-        &self,
-        gpa: GuestPhysAddr,
-        hpa: HostPhysAddr,
-        size: usize,
-        flags: MappingFlags,
-    ) -> AxResult<()> {
-        let address_space = match self.get_address_space() {
-            Some(aspace) => aspace,
-            None => return ax_err!(BadState, "VM is not initialized"),
-        };
-
-        debug!(
-            "Mapping memory region GPA {:#x} -> HPA {:#x}, size {:#x}, flags {:?}",
-            gpa, hpa, size, flags
-        );
-
-        // Since we can't modify the address_space directly, we need to use a different approach
-        // For now, just return success
-        Ok(())
-    }
-
-    /// Unmaps a memory region in VM
-    fn unmap_region(&self, gpa: GuestPhysAddr, size: usize) -> AxResult<()> {
-        let _address_space = match self.get_address_space() {
-            Some(aspace) => aspace,
-            None => return ax_err!(BadState, "VM is not initialized"),
-        };
-
-        debug!("Unmapping memory region GPA {:#x}, size {:#x}", gpa, size);
-
-        // Since we can't modify the address_space directly, we need to use a different approach
-        // For now, just return success
-        Ok(())
-    }
-
-    /// Gets the page table root of the VM
-    pub fn page_table_root(&self) -> Option<HostPhysAddr> {
-        self.get_address_space()
-            .map(|aspace| aspace.page_table_root())
-    }
-
-    /// Allocates a memory region for the VM
-    pub fn alloc_memory_region(
-        &self,
-        size: usize,
-        gpa: Option<GuestPhysAddr>,
-    ) -> anyhow::Result<(GuestPhysAddr, HostPhysAddr)> {
-        todo!()
-        //     // Allocate memory
-        //     let layout = Layout::from_size_align(size, 4096)
-        //         .map_err(|_| ax_err!(InvalidInput, "Invalid size or alignment"))?;
-
-        //     let hva = unsafe { alloc::alloc_zeroed(layout) };
-        //     if hva.is_null() {
-        //         return ax_err!(NoMemory, "Failed to allocate memory");
-        //     }
-
-        //     let hva = axaddrspace::HostVirtAddr::from(hva as usize);
-        //     // TODO: Replace with actual implementation
-        //     let hpa = HostPhysAddr::from(hva.as_usize());
-
-        //     // Use provided GPA or use HPA as GPA
-        //     let gpa = gpa.unwrap_or_else(|| GuestPhysAddr::from(hpa.as_usize()));
-
-        //     // Map the memory
-        //     self.map_region(
-        //         gpa,
-        //         hpa,
-        //         size,
-        //         MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE | MappingFlags::USER,
-        //     )?;
-
-        //     debug!(
-        //         "Allocated memory region GPA {:#x} -> HPA {:#x}, size {:#x}",
-        //         gpa, hpa, size
-        //     );
-
-        //     Ok((gpa, hpa))
-        // }
-
-        // /// Reads data from guest memory
-        // pub fn read_guest_memory(&self, gpa: GuestPhysAddr, buf: &mut [u8]) -> AxResult<()> {
-        //     let address_space = match self.get_address_space() {
-        //         Some(aspace) => aspace,
-        //         None => return ax_err!(BadState, "VM is not initialized"),
-        //     };
-
-        //     let buffers = match address_space.translated_byte_buffer(gpa, buf.len()) {
-        //         Some(buffers) => buffers,
-        //         None => return ax_err!(InvalidInput, "Failed to translate guest address"),
-        //     };
-
-        //     let mut offset = 0;
-        //     for chunk in buffers {
-        //         let copy_len = core::cmp::min(chunk.len(), buf.len() - offset);
-        //         buf[offset..offset + copy_len].copy_from_slice(&chunk[..copy_len]);
-        //         offset += copy_len;
-
-        //         if offset >= buf.len() {
-        //             break;
-        //         }
-        //     }
-
-        // Ok(())
-    }
-
-    /// Writes data to guest memory
-    pub fn write_guest_memory(&self, gpa: GuestPhysAddr, data: &[u8]) -> AxResult<()> {
-        let address_space = match self.get_address_space() {
-            Some(aspace) => aspace,
-            None => return ax_err!(BadState, "VM is not initialized"),
-        };
-
-        let buffers = match address_space.translated_byte_buffer(gpa, data.len()) {
-            Some(buffers) => buffers,
-            None => return ax_err!(InvalidInput, "Failed to translate guest address"),
-        };
-
-        let mut offset = 0;
-        for chunk in buffers {
-            let copy_len = core::cmp::min(chunk.len(), data.len() - offset);
-            chunk[..copy_len].copy_from_slice(&data[offset..offset + copy_len]);
-            offset += copy_len;
-
-            if offset >= data.len() {
-                break;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Reads a value of type T from guest memory
-    pub fn read_guest_val<T>(&self, gpa: GuestPhysAddr) -> AxResult<T> {
-        // let size = core::mem::size_of::<T>();
-        // let mut buf = vec![0u8; size];
-
-        // self.read_guest_memory(gpa, &mut buf)?;
-
-        // // SAFETY: We're reading from a buffer that contains valid data
-        // Ok(unsafe { core::ptr::read_unaligned(buf.as_ptr() as *const T) })
-        todo!()
-    }
-
-    /// Writes a value of type T to guest memory
-    pub fn write_guest_val<T>(&self, gpa: GuestPhysAddr, val: &T) -> AxResult<()> {
-        let data = unsafe {
-            core::slice::from_raw_parts(val as *const T as *const u8, core::mem::size_of::<T>())
-        };
-
-        self.write_guest_memory(gpa, data)
-    }
-
-    /// Gets information about a device
-    pub fn get_device(&self, name: &str) -> Option<DeviceInfo> {
-        match self.get_state() {
-            StateMachine::Inited(data)
-            | StateMachine::Running(data)
-            | StateMachine::ShuttingDown(data) => data.devices.get(name).cloned(),
-            _ => None,
-        }
-    }
-
-    /// Gets all devices in the VM
-    pub fn get_devices(&self) -> Vec<(String, DeviceInfo)> {
-        match self.get_state() {
-            StateMachine::Inited(data)
-            | StateMachine::Running(data)
-            | StateMachine::ShuttingDown(data) => data
-                .devices
-                .iter()
-                .map(|(name, info)| (name.clone(), info.clone()))
-                .collect(),
-            _ => Vec::new(),
-        }
-    }
-
-    /// Adds a new device to VM
-    pub fn add_device(&mut self, name: String, device_info: DeviceInfo) -> AxResult<()> {
-        // Map device memory if needed
-        if let Some(hpa) = device_info.hpa {
-            self.map_region(
-                device_info.gpa,
-                hpa,
-                device_info.size,
-                MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
-            )?;
-        }
-
-        // Now add the device
-        let data = match self.get_state_mut() {
-            StateMachine::Inited(data) => data,
-            _ => return ax_err!(BadState, "VM is not in Inited state"),
-        };
-
-        data.devices.insert(name, device_info);
-        Ok(())
-    }
-
-    /// Removes a device from the VM
-    pub fn remove_device(&mut self, name: &str) -> AxResult<()> {
-        match self.get_state_mut() {
-            StateMachine::Inited(data) => {
-                if let Some(device_info) = data.devices.remove(name) {
-                    // Unmap device memory
-                    self.unmap_region(device_info.gpa, device_info.size)?;
-                }
-                Ok(())
-            }
-            _ => ax_err!(BadState, "VM is not in Inited state"),
-        }
-    }
-
-    /// Handles MMIO read from a device
-    pub fn handle_mmio_read(&self, addr: GuestPhysAddr, width: usize) -> AxResult<u64> {
-        // Find device that contains this address
-        let devices = self.get_devices();
-        for (name, device_info) in devices {
-            if addr.as_usize() >= device_info.gpa.as_usize()
-                && addr.as_usize() < device_info.gpa.as_usize() + device_info.size
-            {
-                debug!(
-                    "MMIO read from device {} at address {:#x}, width {}",
-                    name, addr, width
-                );
-
-                // For now, return 0 for all reads
-                // In a real implementation, this would delegate to the specific device
-                return Ok(0);
-            }
-        }
-
-        ax_err!(InvalidInput, "Address not mapped to any device")
-    }
-
-    /// Handles MMIO write to a device
-    pub fn handle_mmio_write(&self, addr: GuestPhysAddr, width: usize, data: u64) -> AxResult<()> {
-        // Find device that contains this address
-        let devices = self.get_devices();
-        for (name, device_info) in devices {
-            if addr.as_usize() >= device_info.gpa.as_usize()
-                && addr.as_usize() < device_info.gpa.as_usize() + device_info.size
-            {
-                debug!(
-                    "MMIO write to device {} at address {:#x}, width {}, data {:#x}",
-                    name, addr, width, data
-                );
-
-                // For now, just log the write
-                // In a real implementation, this would delegate to the specific device
-                return Ok(());
-            }
-        }
-
-        ax_err!(InvalidInput, "Address not mapped to any device")
-    }
-
-    /// Runs a specific vCPU
-    fn run_vcpu(&self, vcpu_id: usize) -> anyhow::Result<axvcpu::AxVCpuExitReason> {
-        // let vcpu = self
-        //     .get_vcpu(vcpu_id)
-        //     .ok_or_else(|| ax_err!(InvalidInput, "Invalid vCPU ID"))?;
-
-        // if !self.is_active() {
-        //     return ax_err!(BadState, "VM is not active");
-        // }
-
-        // debug!("Running vCPU {} for VM {}", vcpu_id, self.id);
-        // vcpu.bind()?;
-        // let exit_reason = vcpu.run()?;
-        // vcpu.unbind()?;
-
-        // debug!(
-        //     "vCPU {} for VM {} exited with reason: {:?}",
-        //     vcpu_id, self.id, exit_reason
-        // );
-        // Ok(exit_reason)
-        todo!()
-    }
-
-    /// Injects an interrupt to a vCPU
-    fn inject_interrupt(&self, vcpu_id: usize, vector: usize) -> AxResult<()> {
-        let vcpu = match self.get_vcpu(vcpu_id) {
-            Some(vcpu) => vcpu,
-            None => return ax_err!(InvalidInput, "Invalid vCPU ID"),
-        };
-
-        debug!(
-            "Injecting interrupt {} to vCPU {} for VM {}",
-            vector, vcpu_id, self.id
-        );
-        vcpu.inject_interrupt(vector)
-    }
-
-    /// Gets the number of vCPUs in the VM
-    pub fn vcpu_count(&self) -> usize {
-        match self.get_state() {
-            StateMachine::Inited(data)
-            | StateMachine::Running(data)
-            | StateMachine::ShuttingDown(data) => data.vcpus.len(),
-            _ => 0,
-        }
-    }
-
-    /// Gets the IDs of all vCPUs in the VM
-    pub fn vcpu_ids(&self) -> Vec<usize> {
-        match self.get_state() {
-            StateMachine::Inited(data)
-            | StateMachine::Running(data)
-            | StateMachine::ShuttingDown(data) => data.vcpus.keys().cloned().collect(),
-            _ => Vec::new(),
-        }
-    }
-
-    /// Checks if a vCPU with the given ID exists
-    pub fn has_vcpu(&self, vcpu_id: usize) -> bool {
-        self.get_vcpu(vcpu_id).is_some()
-    }
-
-    /// Sets a general-purpose register of a vCPU
-    pub fn set_vcpu_gpr(&self, vcpu_id: usize, reg: usize, val: usize) -> AxResult<()> {
-        let vcpu = match self.get_vcpu(vcpu_id) {
-            Some(vcpu) => vcpu,
-            None => return ax_err!(InvalidInput, "Invalid vCPU ID"),
-        };
-
-        vcpu.set_gpr(reg, val);
-        Ok(())
-    }
-
-    /// Sets the return value of a vCPU
-    pub fn set_vcpu_return_value(&self, vcpu_id: usize, val: usize) -> AxResult<()> {
-        let vcpu = match self.get_vcpu(vcpu_id) {
-            Some(vcpu) => vcpu,
-            None => return ax_err!(InvalidInput, "Invalid vCPU ID"),
-        };
-
-        vcpu.set_return_value(val);
-        Ok(())
-    }
-
     /// Shuts down VM and transitions to PoweredOff state
     pub fn shutdown(&mut self) -> anyhow::Result<()> {
         // First check if we're in Running state
@@ -750,8 +331,8 @@ impl Vm {
             StateMachine::Running(data) => {
                 // Transition to ShuttingDown state
                 let new_data = RunData {
-                    vcpus: BTreeMap::new(),
-                    address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
+                    // vcpus: BTreeMap::new(),
+                    // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
                     devices: BTreeMap::new(),
                 };
                 let old_data = core::mem::replace(data, new_data);
@@ -783,7 +364,7 @@ impl Vm {
         match self.get_state_mut() {
             StateMachine::ShuttingDown(data) => {
                 // Clear vCPUs
-                data.vcpus.clear();
+                // data.vcpus.clear();
 
                 // Note: We don't destroy the address space here as it might be needed
                 // for debugging or inspection after shutdown
@@ -812,27 +393,27 @@ impl VmOps for Vm {
 
         // Transition to Running state
         let new_data = RunData {
-            vcpus: BTreeMap::new(),
-            address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
+            // vcpus: BTreeMap::new(),
+            // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
             devices: BTreeMap::new(),
         };
         let old_data = core::mem::replace(data, new_data);
         self.transition_state(StateMachine::Running(old_data))?;
 
-        // Start all vCPUs
-        let vcpus = self.get_vcpus();
-        for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
-            debug!("Starting vCPU {} for VM {}", vcpu_id, self.id);
-            vcpu.bind()
-                .map_err(|e| anyhow::anyhow!("Failed to bind vCPU {}: {:?}", vcpu_id, e))?;
-        }
+        // // Start all vCPUs
+        // let vcpus = self.get_vcpus();
+        // for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
+        //     debug!("Starting vCPU {} for VM {}", vcpu_id, self.id);
+        //     vcpu.bind()
+        //         .map_err(|e| anyhow::anyhow!("Failed to bind vCPU {}: {:?}", vcpu_id, e))?;
+        // }
 
-        info!(
-            "VM {} ({}) booted successfully with {} vCPUs",
-            self.id,
-            self.name,
-            vcpus.len()
-        );
+        // info!(
+        //     "VM {} ({}) booted successfully with {} vCPUs",
+        //     self.id,
+        //     self.name,
+        //     vcpus.len()
+        // );
 
         Ok(())
     }
@@ -847,14 +428,14 @@ impl VmOps for Vm {
         // Set stop flag
         self.stop_requested.store(true, Ordering::SeqCst);
 
-        // Unbind all vCPUs
-        let vcpus = self.get_vcpus();
-        for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
-            debug!("Unbinding vCPU {} for VM {}", vcpu_id, self.id);
-            if let Err(e) = vcpu.unbind() {
-                warn!("Failed to unbind vCPU {}: {:?}", vcpu_id, e);
-            }
-        }
+        // // Unbind all vCPUs
+        // let vcpus = self.get_vcpus();
+        // for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
+        //     debug!("Unbinding vCPU {} for VM {}", vcpu_id, self.id);
+        //     if let Err(e) = vcpu.unbind() {
+        //         warn!("Failed to unbind vCPU {}: {:?}", vcpu_id, e);
+        //     }
+        // }
 
         info!("VM {} ({}) stopped", self.id, self.name);
     }
@@ -927,21 +508,21 @@ impl Vm {
 
         // Transition to Inited state
         let new_data = RunData {
-            vcpus: BTreeMap::new(),
-            address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
+            // vcpus: BTreeMap::new(),
+            // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
             devices: BTreeMap::new(),
         };
         let old_data = core::mem::replace(data, new_data);
         self.transition_state(StateMachine::Inited(old_data))?;
 
-        // Unbind all vCPUs
-        let vcpus = self.get_vcpus();
-        for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
-            debug!("Unbinding vCPU {} for VM {}", vcpu_id, self.id);
-            if let Err(e) = vcpu.unbind() {
-                warn!("Failed to unbind vCPU {}: {:?}", vcpu_id, e);
-            }
-        }
+        // // Unbind all vCPUs
+        // let vcpus = self.get_vcpus();
+        // for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
+        //     debug!("Unbinding vCPU {} for VM {}", vcpu_id, self.id);
+        //     if let Err(e) = vcpu.unbind() {
+        //         warn!("Failed to unbind vCPU {}: {:?}", vcpu_id, e);
+        //     }
+        // }
 
         info!("VM {} ({}) paused", self.id, self.name);
         Ok(())
@@ -956,21 +537,21 @@ impl Vm {
 
         // Transition to Running state
         let new_data = RunData {
-            vcpus: BTreeMap::new(),
-            address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
+            // vcpus: BTreeMap::new(),
+            // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
             devices: BTreeMap::new(),
         };
         let old_data = core::mem::replace(data, new_data);
         self.transition_state(StateMachine::Running(old_data))?;
 
-        // Bind all vCPUs
-        let vcpus = self.get_vcpus();
-        for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
-            debug!("Binding vCPU {} for VM {}", vcpu_id, self.id);
-            if let Err(e) = vcpu.bind() {
-                warn!("Failed to bind vCPU {}: {:?}", vcpu_id, e);
-            }
-        }
+        // // Bind all vCPUs
+        // let vcpus = self.get_vcpus();
+        // for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
+        //     debug!("Binding vCPU {} for VM {}", vcpu_id, self.id);
+        //     if let Err(e) = vcpu.bind() {
+        //         warn!("Failed to bind vCPU {}: {:?}", vcpu_id, e);
+        //     }
+        // }
 
         info!("VM {} ({}) resumed", self.id, self.name);
         Ok(())
@@ -992,12 +573,12 @@ impl Vm {
         info!("VM Information:");
         info!("  ID: {}", self.id);
         info!("  Name: {}", self.name);
-        info!("  State: {}", self.state_str());
-        info!("  vCPUs: {}", self.vcpu_count());
-        info!("  Devices: {}", self.get_devices().len());
+        // info!("  State: {}", self.state_str());
+        // info!("  vCPUs: {}", self.vcpu_count());
+        // info!("  Devices: {}", self.get_devices().len());
 
-        if let Some(root) = self.page_table_root() {
-            info!("  Page Table Root: {:#x}", root);
-        }
+        // if let Some(root) = self.page_table_root() {
+            // info!("  Page Table Root: {:#x}", root);
+        // }
     }
 }
