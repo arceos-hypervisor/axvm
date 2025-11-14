@@ -1,3 +1,4 @@
+use axhal::percpu::this_cpu_id;
 use core::fmt;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use memory_addr::VirtAddr;
@@ -8,6 +9,8 @@ use crate::alloc::string::String;
 use crate::alloc::sync::Arc;
 use crate::alloc::vec;
 use crate::alloc::vec::Vec;
+use crate::fdt;
+use crate::vhal::ArchHal;
 
 use axaddrspace::{AddrSpace, AxMmHal, GuestPhysAddr, HostPhysAddr, MappingFlags};
 use axerrno::{AxResult, ax_err};
@@ -16,6 +19,32 @@ use page_table_multiarch::PagingHandler;
 
 use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig, AxVCpuSetupConfig};
 use crate::{config::AxVMConfig, vm2::*};
+
+pub mod cpu;
+
+pub struct Hal;
+
+impl ArchHal for Hal {
+    fn current_enable_viretualization() -> anyhow::Result<()> {
+        let cpu_id = this_cpu_id();
+        info!("Enabling virtualization on cpu [{cpu_id:#x}]");
+
+        Ok(())
+    }
+
+    fn init() -> anyhow::Result<()> {
+        cpu::init();
+        Ok(())
+    }
+
+    fn cpu_list() -> Vec<crate::vhal::CpuHardId> {
+        fdt::cpu_list()
+            .unwrap()
+            .into_iter()
+            .map(|id| crate::vhal::CpuHardId::new(id))
+            .collect()
+    }
+}
 
 /// A virtual CPU with architecture-independent interface.
 type VCpu<U> = AxVCpu<AxArchVCpuImpl<U>>;

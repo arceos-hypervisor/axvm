@@ -38,7 +38,9 @@ mod vm;
 mod vm2;
 
 pub mod config;
+pub mod vhal;
 
+use anyhow::bail;
 pub use hal::AxVMHal;
 pub use vm::AxVCpuRef;
 pub use vm::AxVM;
@@ -52,3 +54,4 @@ pub type AxVMPerCpu<U> = axvcpu::AxPerCpu<vcpu::AxVMArchPerCpuImpl<U>>;
 pub fn has_hardware_support() -> bool {
     vcpu::has_hardware_support()
 }
+
