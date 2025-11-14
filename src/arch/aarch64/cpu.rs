@@ -11,6 +11,5 @@ struct PreCpu;
 
 pub fn init() -> anyhow::Result<()> {
     PRE_CPU.init();
-    todo!();
     Ok(())
 }
