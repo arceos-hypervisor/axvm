@@ -1,28 +1,35 @@
+use alloc::{collections::BTreeMap, vec::Vec};
 use core::{
     cell::UnsafeCell,
+    fmt::Display,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use alloc::{collections::btree_map::BTreeMap, vec::Vec};
 use axtask::AxCpuMask;
 
 use crate::{
     TASK_STACK_SIZE,
-    arch::{self, Hal},
+    arch::{CpuData, Hal},
+    vhal::precpu::PreCpuSet,
 };
 
+pub(crate) mod precpu;
 mod timer;
 
+static PRE_CPU: PreCpuSet<CpuData> = PreCpuSet::new();
+
 pub fn init() -> anyhow::Result<()> {
-    Hal::init();
+    Hal::init()?;
 
     static CORES: AtomicUsize = AtomicUsize::new(0);
 
     let cpu_count = cpu_count();
 
     info!("Initializing VHal for {cpu_count} CPUs...");
+    PRE_CPU.init();
 
     for cpu_id in 0..cpu_count {
+        let id = CpuId::new(cpu_id);
         let _handle = axtask::spawn_raw(
             move || {
                 info!("Core {cpu_id} is initializing hardware virtualization support...");
@@ -31,9 +38,11 @@ pub fn init() -> anyhow::Result<()> {
                     axtask::set_current_affinity(AxCpuMask::one_shot(cpu_id)),
                     "Initialize CPU affinity failed!"
                 );
-                info!("Enabling hardware virtualization support on core {cpu_id}");
+                info!("Enabling hardware virtualization support on core {id}");
                 timer::init_percpu();
 
+                let cpu_data = Hal::current_cpu_init(id).expect("Enable virtualization failed!");
+                unsafe { PRE_CPU.set(cpu_data.hard_id(), cpu_data) };
                 let _ = CORES.fetch_add(1, Ordering::Release);
             },
             format!("init-cpu-{}", cpu_id),
@@ -58,43 +67,13 @@ pub fn cpu_count() -> usize {
 
 pub(crate) trait ArchHal {
     fn init() -> anyhow::Result<()>;
+    fn cpu_hard_id() -> CpuHardId;
     fn cpu_list() -> Vec<CpuHardId>;
-    fn current_enable_viretualization() -> anyhow::Result<()>;
+    fn current_cpu_init(id: CpuId) -> anyhow::Result<CpuData>;
 }
 
-pub fn current_enable_viretualization() -> anyhow::Result<()> {
-    Hal::current_enable_viretualization()
-}
-
-pub(crate) struct PreCpuSet<T>(UnsafeCell<BTreeMap<usize, Option<T>>>);
-
-unsafe impl<T> Sync for PreCpuSet<T> {}
-unsafe impl<T> Send for PreCpuSet<T> {}
-
-impl<T> PreCpuSet<T> {
-    pub const fn new() -> Self {
-        PreCpuSet(UnsafeCell::new(BTreeMap::new()))
-    }
-
-    unsafe fn set(&self, cpu_id: usize, val: T) {
-        let pre_cpu_map = unsafe { &mut *self.0.get() };
-        pre_cpu_map.insert(cpu_id, Some(val));
-    }
-
-    pub fn get(&self, cpu_id: usize) -> Option<&T> {
-        let pre_cpu_map = unsafe { &*self.0.get() };
-        let v = pre_cpu_map.get(&cpu_id)?;
-        Some(v.as_ref().expect("init not called"))
-    }
-
-    pub fn init(&self) {
-        let cpu_list = Hal::cpu_list();
-        debug!("Initializing PreCpuSet for CPUs: {:?}", cpu_list);
-        for cpu_id in cpu_list {
-            let v = unsafe { &mut *self.0.get() };
-            v.insert(cpu_id.raw(), None);
-        }
-    }
+pub(crate) trait ArchCpuData {
+    fn hard_id(&self) -> CpuHardId;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -108,5 +87,31 @@ impl CpuHardId {
 
     pub fn raw(&self) -> usize {
         self.0
+    }
+}
+
+impl Display for CpuHardId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "CPU Hard({:#x})", self.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+pub struct CpuId(usize);
+
+impl CpuId {
+    pub fn new(id: usize) -> Self {
+        CpuId(id)
+    }
+
+    pub fn raw(&self) -> usize {
+        self.0
+    }
+}
+
+impl Display for CpuId {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "CPU({})", self.0)
     }
 }

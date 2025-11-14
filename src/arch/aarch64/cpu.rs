@@ -1,15 +1,30 @@
+use aarch64_cpu::registers::*;
 use axhal::percpu::this_cpu_id;
 
 use crate::{
-    fdt::{self, fdt},
-    vhal::{ArchHal, PreCpuSet},
+    fdt,
+    vhal::{ArchCpuData, ArchHal, CpuHardId, CpuId, precpu::PreCpuSet},
 };
 
-static PRE_CPU: PreCpuSet<PreCpu> = PreCpuSet::new();
+pub struct CpuData {
+    pub id: CpuId,
+    pub hard_id: CpuHardId,
+}
 
-struct PreCpu;
+impl CpuData {
+    pub fn new(id: CpuId) -> Self {
+        let mpidr = MPIDR_EL1.get() as usize;
+        let hard_id = mpidr & 0xff_ff_ff;
 
-pub fn init() -> anyhow::Result<()> {
-    PRE_CPU.init();
-    Ok(())
+        CpuData {
+            id,
+            hard_id: CpuHardId::new(hard_id),
+        }
+    }
+}
+
+impl ArchCpuData for CpuData {
+    fn hard_id(&self) -> crate::vhal::CpuHardId {
+        self.hard_id
+    }
 }
