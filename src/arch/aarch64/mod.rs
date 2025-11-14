@@ -1,3 +1,4 @@
+use aarch64_cpu::registers::MPIDR_EL1;
 use axhal::percpu::this_cpu_id;
 use core::fmt;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -10,8 +11,9 @@ use crate::alloc::sync::Arc;
 use crate::alloc::vec;
 use crate::alloc::vec::Vec;
 use crate::fdt;
-use crate::vhal::ArchHal;
+use crate::vhal::{ArchHal, CpuId};
 
+use aarch64_cpu::registers::{ReadWriteable, Writeable, Readable};
 use axaddrspace::{AddrSpace, AxMmHal, GuestPhysAddr, HostPhysAddr, MappingFlags};
 use axerrno::{AxResult, ax_err};
 use page_table_multiarch::PagingHandler;
@@ -20,18 +22,18 @@ use crate::{config::AxVMConfig, vm::*};
 
 pub mod cpu;
 
+pub use cpu::CpuData;
+
 pub struct Hal;
 
 impl ArchHal for Hal {
-    fn current_enable_viretualization() -> anyhow::Result<()> {
-        let cpu_id = this_cpu_id();
-        info!("Enabling virtualization on cpu [{cpu_id:#x}]");
+    fn current_cpu_init(id: CpuId) -> anyhow::Result<CpuData> {
+        info!("Enabling virtualization on cpu {id}");
 
-        Ok(())
+        Ok(CpuData::new(id))
     }
 
     fn init() -> anyhow::Result<()> {
-        cpu::init();
         Ok(())
     }
 
@@ -39,15 +41,15 @@ impl ArchHal for Hal {
         fdt::cpu_list()
             .unwrap()
             .into_iter()
-            .map(|id| crate::vhal::CpuHardId::new(id))
+            .map(crate::vhal::CpuHardId::new)
             .collect()
     }
-}
 
-/// A virtual CPU with architecture-independent interface.
-// type VCpu<U> = AxVCpu<AxArchVCpuImpl<U>>;
-/// A reference to a vCPU.
-// pub type AxVCpuRef<U> = Arc<VCpu<U>>;
+    fn cpu_hard_id() -> crate::vhal::CpuHardId {
+        let mpidr = MPIDR_EL1.get() as usize;
+        crate::vhal::CpuHardId::new(mpidr)
+    }
+}
 
 // Implement Display for VmId
 impl fmt::Display for VmId {
@@ -578,7 +580,7 @@ impl Vm {
         // info!("  Devices: {}", self.get_devices().len());
 
         // if let Some(root) = self.page_table_root() {
-            // info!("  Page Table Root: {:#x}", root);
+        // info!("  Page Table Root: {:#x}", root);
         // }
     }
 }
