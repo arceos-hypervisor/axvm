@@ -13,7 +13,7 @@ use crate::alloc::vec::Vec;
 use crate::fdt;
 use crate::vhal::{ArchHal, CpuId};
 
-use aarch64_cpu::registers::{ReadWriteable, Writeable, Readable};
+use aarch64_cpu::registers::{ReadWriteable, Readable, Writeable};
 use axaddrspace::{AddrSpace, AxMmHal, GuestPhysAddr, HostPhysAddr, MappingFlags};
 use axerrno::{AxResult, ax_err};
 use page_table_multiarch::PagingHandler;
@@ -29,11 +29,14 @@ pub struct Hal;
 impl ArchHal for Hal {
     fn current_cpu_init(id: CpuId) -> anyhow::Result<CpuData> {
         info!("Enabling virtualization on cpu {id}");
-
-        Ok(CpuData::new(id))
+        let mut cpu = CpuData::new(id);
+        cpu.init()?;
+        info!("{cpu}");
+        Ok(cpu)
     }
 
     fn init() -> anyhow::Result<()> {
+        arm_vcpu::init_hal(&cpu::VCpuHal);
         Ok(())
     }
 
