@@ -42,7 +42,7 @@ pub fn init() -> anyhow::Result<()> {
                 timer::init_percpu();
 
                 let cpu_data = Hal::current_cpu_init(id).expect("Enable virtualization failed!");
-                unsafe { PRE_CPU.set(cpu_data.hard_id(), cpu_data) };
+                // unsafe { PRE_CPU.set(cpu_data.hard_id(), cpu_data) };
                 let _ = CORES.fetch_add(1, Ordering::Release);
             },
             format!("init-cpu-{}", cpu_id),
