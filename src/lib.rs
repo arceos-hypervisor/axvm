@@ -29,10 +29,8 @@ mod vm;
 pub mod config;
 pub mod vhal;
 
-
+/// Enable hardware virtualization support.
 pub fn enable_viretualization() -> anyhow::Result<()> {
     vhal::init()?;
-
-    panic!();
     Ok(())
 }
