@@ -13,11 +13,11 @@ vmx = []
 [dependencies]
 anyhow = {version = "1.0", default-features = false}
 cfg-if = "1.0"
+fdt-parser = "0.5"
+lazyinit = "0.2"
 log = "0.4"
 spin = "0.10"
 timer_list = "0.1"
-fdt-parser = "0.5"
-lazyinit = "0.2"
 
 # System independent crates provided by ArceOS.
 axerrno = "0.1.0"
@@ -34,12 +34,10 @@ axaddrspace = "0.2"
 # axdevice_base = "0.1"
 # axvcpu = "0.1"
 axvmconfig = {version = "0.1", default-features = false}
-
+axconfig = {workspace = true}
 axhal.workspace = true
 axruntime.workspace = true
 axtask.workspace = true
-
-
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 # x86_vcpu = "0.1"
@@ -54,6 +52,6 @@ arm_vcpu = "0.1"
 # arm_vgic = {version = "0.1", features = ["vgicv3"]}
 
 [patch.crates-io]
+arm_vcpu = {git = "https://github.com/arceos-hypervisor/arm_vcpu", branch = "next"}
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
 axvmconfig = {git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next"}
-arm_vcpu = {git = "https://github.com/arceos-hypervisor/arm_vcpu", branch = "next"}

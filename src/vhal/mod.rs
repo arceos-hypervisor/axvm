@@ -6,9 +6,9 @@ use core::{
 };
 
 use axtask::AxCpuMask;
-
+use axconfig::TASK_STACK_SIZE;
 use crate::{
-    TASK_STACK_SIZE,
+    
     arch::{CpuData, Hal},
     vhal::precpu::PreCpuSet,
 };
@@ -27,7 +27,6 @@ pub fn init() -> anyhow::Result<()> {
 
     info!("Initializing VHal for {cpu_count} CPUs...");
     PRE_CPU.init();
-
     for cpu_id in 0..cpu_count {
         let id = CpuId::new(cpu_id);
         let _handle = axtask::spawn_raw(
@@ -48,7 +47,7 @@ pub fn init() -> anyhow::Result<()> {
             format!("init-cpu-{}", cpu_id),
             TASK_STACK_SIZE,
         );
-        // _handle.join();
+        // handles.push(_handle);
     }
     info!("Waiting for all cores to enable hardware virtualization...");
 
@@ -57,7 +56,9 @@ pub fn init() -> anyhow::Result<()> {
         // Use `yield_now` instead of `core::hint::spin_loop` to avoid deadlock.
         axtask::yield_now();
     }
-
+    // for handle in handles {
+    //     handle.join();
+    // }
     info!("All cores have enabled hardware virtualization support.");
     Ok(())
 }

@@ -21,8 +21,8 @@
 //     } else if #[cfg(target_arch = "aarch64")] {
 //         pub use arm_vcpu::Aarch64VCpu as AxArchVCpuImpl;
 //         pub use arm_vcpu::Aarch64PerCpu as AxVMArchPerCpuImpl;
-//   
-    //   pub use arm_vcpu::Aarch64VCpuCreateConfig as AxVCpuCreateConfig;
+//
+//   pub use arm_vcpu::Aarch64VCpuCreateConfig as AxVCpuCreateConfig;
 //         pub use arm_vcpu::Aarch64VCpuSetupConfig as AxVCpuSetupConfig;
 //         pub use arm_vcpu::has_hardware_support;
 
