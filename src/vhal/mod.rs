@@ -4,19 +4,21 @@ use core::{
     fmt::Display,
     sync::atomic::{AtomicUsize, Ordering},
 };
+use spin::Mutex;
+use vm_allocator::IdAllocator;
 
-use axtask::AxCpuMask;
-use axconfig::TASK_STACK_SIZE;
 use crate::{
-    
-    arch::{CpuData, Hal},
+    arch::{HCpu, Hal},
     vhal::precpu::PreCpuSet,
 };
+use axconfig::TASK_STACK_SIZE;
+use axtask::AxCpuMask;
 
 pub(crate) mod precpu;
 mod timer;
 
-static PRE_CPU: PreCpuSet<CpuData> = PreCpuSet::new();
+static PRE_CPU: PreCpuSet<HCpu> = PreCpuSet::new();
+static HCPU_ALLOC: Mutex<Option<IdAllocator>> = Mutex::new(None);
 
 pub fn init() -> anyhow::Result<()> {
     Hal::init()?;
@@ -59,6 +61,9 @@ pub fn init() -> anyhow::Result<()> {
     // for handle in handles {
     //     handle.join();
     // }
+
+    HCPU_ALLOC.lock().replace(IdAllocator::new(0, cpu_count));
+
     info!("All cores have enabled hardware virtualization support.");
     Ok(())
 }
@@ -67,11 +72,38 @@ pub fn cpu_count() -> usize {
     axruntime::cpu_count()
 }
 
+pub struct HCpuExclusive(CpuId);
+
+impl HCpuExclusive {
+    pub fn try_new(id: Option<CpuId>) -> Option<Self> {
+        // let id = id.unwrap_or_else(|| {
+        //     let hard_id = Hal::cpu_hard_id();
+        //     let cpu_list = Hal::cpu_list();
+        //     let index = cpu_list
+        //         .iter()
+        //         .position(|&h_id| h_id == hard_id)
+        //         .expect("Current CPU hard ID not found in CPU list");
+        //     CpuId::new(index)
+        // });
+        // let cpu_data = PRE_CPU.get(id).ok()?;
+        // Some(HCpuExclusive(id))
+    }
+}
+
+impl Drop for HCpuExclusive {
+    fn drop(&mut self) {
+        let mut allocator = HCPU_ALLOC.lock();
+        if let Some(ref mut alloc) = *allocator {
+            let _ = alloc.free_id(self.0.raw() as u32);
+        }
+    }
+}
+
 pub(crate) trait ArchHal {
     fn init() -> anyhow::Result<()>;
     fn cpu_hard_id() -> CpuHardId;
     fn cpu_list() -> Vec<CpuHardId>;
-    fn current_cpu_init(id: CpuId) -> anyhow::Result<CpuData>;
+    fn current_cpu_init(id: CpuId) -> anyhow::Result<HCpu>;
 }
 
 pub(crate) trait ArchCpuData {

@@ -1,3 +1,8 @@
+use alloc::string::String;
+use spin::Mutex;
+
+use crate::AxVMConfig;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VmId(usize);
 
@@ -33,4 +38,36 @@ pub enum Status {
     Running,
     ShuttingDown,
     PoweredOff,
+}
+
+pub struct Vm {
+    id: VmId,
+    name: String,
+    inner: Mutex<crate::arch::ArchVm>,
+}
+
+impl Vm {
+    pub fn new(config: AxVMConfig) -> anyhow::Result<Self> {
+        let mut arch_vm = crate::arch::ArchVm::new(config)?;
+        arch_vm.init()?;
+
+        Ok(Vm {
+            id: arch_vm.id(),
+            name: arch_vm.name().into(),
+            inner: Mutex::new(arch_vm),
+        })
+    }
+
+    pub fn id(&self) -> VmId {
+        self.id
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub fn boot(&self) -> anyhow::Result<()> {
+        let mut arch_vm = self.inner.lock();
+        arch_vm.boot()
+    }
 }

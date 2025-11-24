@@ -20,7 +20,7 @@ const TASK_STACK_SIZE: usize = 0x40000; // 16KB
 
 #[cfg_attr(target_arch = "aarch64", path = "arch/aarch64/mod.rs")]
 #[cfg_attr(target_arch = "x86_64", path = "arch/x86_64/mod.rs")]
-pub mod arch;
+pub(crate) mod arch;
 
 mod fdt;
 mod vcpu;
@@ -28,6 +28,9 @@ mod vm;
 
 pub mod config;
 pub mod vhal;
+
+pub use config::AxVMConfig;
+pub use vm::*;
 
 /// Enable hardware virtualization support.
 pub fn enable_viretualization() -> anyhow::Result<()> {
