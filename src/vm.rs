@@ -1,290 +1,15 @@
-use alloc::boxed::Box;
-use alloc::format;
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use axaddrspace::HostVirtAddr;
-use axerrno::{AxError, AxResult, ax_err, ax_err_type};
-use core::alloc::Layout;
-use core::sync::atomic::{AtomicBool, Ordering};
-use memory_addr::{align_down_4k, align_up_4k};
-use spin::{Mutex, Once};
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VmId(usize);
 
-use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags, device::AccessWidth};
-use axdevice::{AxVmDeviceConfig, AxVmDevices};
-use axvcpu::{AxVCpu, AxVCpuExitReason, AxVCpuHal};
-use cpumask::CpuMask;
-
-use crate::config::{AxVMConfig, PhysCpuList};
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
-use crate::{AxVMHal, has_hardware_support};
-
-#[cfg(target_arch = "aarch64")]
-use crate::vcpu::get_sysreg_device;
-
-const VM_ASPACE_BASE: usize = 0x0;
-const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
-
-/// A vCPU with architecture-independent interface.
-#[allow(type_alias_bounds)]
-type VCpu<U: AxVCpuHal> = AxVCpu<AxArchVCpuImpl<U>>;
-/// A reference to a vCPU.
-#[allow(type_alias_bounds)]
-pub type AxVCpuRef<U: AxVCpuHal> = Arc<VCpu<U>>;
-/// A reference to a VM.
-#[allow(type_alias_bounds)]
-pub type AxVMRef<H: AxVMHal, U: AxVCpuHal> = Arc<AxVM<H, U>>; // we know the bound is not enforced here, we keep it for clarity
-
-struct AxVMInnerConst<U: AxVCpuHal> {
-    phys_cpu_ls: PhysCpuList,
-    vcpu_list: Box<[AxVCpuRef<U>]>,
-    devices: AxVmDevices,
-}
-
-unsafe impl<U: AxVCpuHal> Send for AxVMInnerConst<U> {}
-unsafe impl<U: AxVCpuHal> Sync for AxVMInnerConst<U> {}
-
-#[derive(Debug, Clone)]
-pub struct VMMemoryRegion {
-    pub gpa: GuestPhysAddr,
-    pub hva: HostVirtAddr,
-    pub layout: Layout,
-}
-
-impl VMMemoryRegion {
-    pub fn size(&self) -> usize {
-        self.layout.size()
-    }
-
-    pub fn is_identical(&self) -> bool {
-        self.gpa.as_usize() == self.hva.as_usize()
+impl VmId {
+    pub fn new(id: usize) -> Self {
+        VmId(id)
     }
 }
 
-struct AxVMInnerMut<H: AxVMHal> {
-    // Todo: use more efficient lock.
-    address_space: AddrSpace<H::PagingHandler>,
-    memory_regions: Vec<VMMemoryRegion>,
-    config: AxVMConfig,
-    _marker: core::marker::PhantomData<H>,
-}
-
-const TEMP_MAX_VCPU_NUM: usize = 64;
-
-/// A Virtual Machine.
-pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
-    id: usize,
-    running: AtomicBool,
-    shutting_down: AtomicBool,
-    inner_const: Once<AxVMInnerConst<U>>,
-    inner_mut: Mutex<AxVMInnerMut<H>>,
-}
-
-impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
-    /// Creates a new VM with the given configuration.
-    /// Returns an error if the configuration is invalid.
-    /// The VM is not started until `boot` is called.
-    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>> {
-        let address_space =
-            AddrSpace::new_empty(4, GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
-
-        let result = Arc::new(Self {
-            id: config.id(),
-            running: AtomicBool::new(false),
-            shutting_down: AtomicBool::new(false),
-            inner_const: Once::new(),
-            inner_mut: Mutex::new(AxVMInnerMut {
-                address_space,
-                config,
-                memory_regions: Vec::new(),
-                _marker: core::marker::PhantomData,
-            }),
-        });
-
-        info!("VM created: id={}", result.id());
-
-        Ok(result)
-    }
-
-    /// Returns the VM id.
-    #[inline]
-    pub fn id(&self) -> usize {
-        self.id
-    }
-
-    /// Sets up the VM before booting.
-    pub fn init(&self) -> AxResult {
-        let mut inner_mut = self.inner_mut.lock();
-
-        let dtb_addr = inner_mut.config.image_config().dtb_load_gpa;
-        let vcpu_id_pcpu_sets = inner_mut.config.phys_cpu_ls.get_vcpu_affinities_pcpu_ids();
-
-        debug!("id: {}, VCpuIdPCpuSets: {vcpu_id_pcpu_sets:#x?}", self.id());
-
-        let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
-        for (vcpu_id, phys_cpu_set, _pcpu_id) in vcpu_id_pcpu_sets {
-            #[cfg(target_arch = "aarch64")]
-            let arch_config = AxVCpuCreateConfig {
-                mpidr_el1: _pcpu_id as _,
-                dtb_addr: dtb_addr.unwrap_or_default().as_usize(),
-            };
-            #[cfg(target_arch = "riscv64")]
-            let arch_config = AxVCpuCreateConfig {
-                hart_id: vcpu_id as _,
-                dtb_addr: dtb_addr.unwrap_or_default().as_usize(),
-            };
-            #[cfg(target_arch = "x86_64")]
-            let arch_config = AxVCpuCreateConfig::default();
-
-            vcpu_list.push(Arc::new(VCpu::new(
-                self.id(),
-                vcpu_id,
-                0, // Currently not used.
-                phys_cpu_set,
-                arch_config,
-            )?));
-        }
-
-        let mut pt_dev_region = Vec::new();
-        for pt_device in inner_mut.config.pass_through_devices() {
-            trace!(
-                "PT dev {:?} region: [{:#x}~{:#x}] -> [{:#x}~{:#x}]",
-                pt_device.name,
-                pt_device.base_gpa,
-                pt_device.base_gpa + pt_device.length,
-                pt_device.base_hpa,
-                pt_device.base_hpa + pt_device.length
-            );
-            // Align the base address and length to 4K boundaries.
-            pt_dev_region.push((
-                align_down_4k(pt_device.base_gpa),
-                align_up_4k(pt_device.length),
-            ));
-        }
-
-        for pt_addr in inner_mut.config.pass_through_addresses() {
-            debug!(
-                "PT addr region: [{:#x}~{:#x}]",
-                pt_addr.base_gpa,
-                pt_addr.base_gpa + pt_addr.length,
-            );
-            // Align the base address and length to 4K boundaries.
-            pt_dev_region.push((align_down_4k(pt_addr.base_gpa), align_up_4k(pt_addr.length)));
-        }
-
-        pt_dev_region.sort_by_key(|(gpa, _)| *gpa);
-
-        // Merge overlapping regions.
-        let pt_dev_region =
-            pt_dev_region
-                .into_iter()
-                .fold(Vec::<(usize, usize)>::new(), |mut acc, (gpa, len)| {
-                    if let Some(last) = acc.last_mut() {
-                        if last.0 + last.1 >= gpa {
-                            // Merge with the last region.
-                            last.1 = (last.0 + last.1).max(gpa + len) - last.0;
-                        } else {
-                            acc.push((gpa, len));
-                        }
-                    } else {
-                        acc.push((gpa, len));
-                    }
-                    acc
-                });
-
-        for (gpa, len) in &pt_dev_region {
-            inner_mut.address_space.map_linear(
-                GuestPhysAddr::from(*gpa),
-                HostPhysAddr::from(*gpa),
-                *len,
-                MappingFlags::DEVICE
-                    | MappingFlags::READ
-                    | MappingFlags::WRITE
-                    | MappingFlags::USER,
-            )?;
-        }
-
-        let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
-            emu_configs: inner_mut.config.emu_devices().to_vec(),
-        });
-
-        #[cfg(target_arch = "aarch64")]
-        {
-            let passthrough =
-                inner_mut.config.interrupt_mode() == axvmconfig::VMInterruptMode::Passthrough;
-            if passthrough {
-                let spis = inner_mut.config.pass_through_spis();
-                let cpu_id = self.id() - 1; // FIXME: get the real CPU id.
-                let mut gicd_found = false;
-
-                for device in devices.iter_mmio_dev() {
-                    if let Some(result) = axdevice_base::map_device_of_type(
-                        device,
-                        |gicd: &arm_vgic::v3::vgicd::VGicD| {
-                            debug!("VGicD found, assigning SPIs...");
-
-                            for spi in spis {
-                                gicd.assign_irq(*spi + 32, cpu_id, (0, 0, 0, cpu_id as _))
-                            }
-
-                            Ok(())
-                        },
-                    ) {
-                        result?;
-                        gicd_found = true;
-                        break;
-                    }
-                }
-
-                if !gicd_found {
-                    warn!("Failed to assign SPIs: No VGicD found in device list");
-                }
-            } else {
-                // non-passthrough mode, we need to set up the virtual timer.
-                //
-                // FIXME: maybe let `axdevice` handle this automatically?
-                // how to let `axdevice` know whether the VM is in passthrough mode or not?
-                for dev in get_sysreg_device() {
-                    devices.add_sys_reg_dev(dev);
-                }
-            }
-        }
-
-        self.inner_const.call_once(|| AxVMInnerConst {
-            phys_cpu_ls: inner_mut.config.phys_cpu_ls.clone(),
-            vcpu_list: vcpu_list.into_boxed_slice(),
-            devices,
-        });
-
-        // Setup VCpus.
-        for vcpu in self.vcpu_list() {
-            #[cfg(target_arch = "aarch64")]
-            let setup_config = {
-                let passthrough =
-                    inner_mut.config.interrupt_mode() == axvmconfig::VMInterruptMode::Passthrough;
-                crate::vcpu::AxVCpuSetupConfig {
-                    passthrough_interrupt: passthrough,
-                    passthrough_timer: passthrough,
-                }
-            };
-            #[cfg(not(target_arch = "aarch64"))]
-            let setup_config = <AxArchVCpuImpl<U> as axvcpu::AxArchVCpu>::SetupConfig::default();
-
-            let entry = if vcpu.id() == 0 {
-                inner_mut.config.bsp_entry()
-            } else {
-                inner_mut.config.ap_entry()
-            };
-
-            debug!("Setting up vCPU[{}] entry at {:#x}", vcpu.id(), entry);
-
-            vcpu.setup(
-                entry,
-                inner_mut.address_space.page_table_root(),
-                setup_config,
-            )?;
-        }
-        info!("VM setup: id={}", self.id());
-        Ok(())
+impl From<usize> for VmId {
+    fn from(value: usize) -> Self {
+        VmId(value)
     }
 
     /// Retrieves the vCPU corresponding to the given vcpu_id for the VM.
@@ -685,5 +410,37 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let gpa = gpa.unwrap();
         g.memory_regions.push(VMMemoryRegion { gpa, hva, layout });
         Ok(s)
+    }
+}
+
+pub struct Vm {
+    id: VmId,
+    name: String,
+    inner: Mutex<crate::arch::ArchVm>,
+}
+
+impl Vm {
+    pub fn new(config: AxVMConfig) -> anyhow::Result<Self> {
+        let mut arch_vm = crate::arch::ArchVm::new(config)?;
+        arch_vm.init()?;
+
+        Ok(Vm {
+            id: arch_vm.id(),
+            name: arch_vm.name().into(),
+            inner: Mutex::new(arch_vm),
+        })
+    }
+
+    pub fn id(&self) -> VmId {
+        self.id
+    }
+
+    pub fn name(&self) -> &str {
+        self.name.as_str()
+    }
+
+    pub fn boot(&self) -> anyhow::Result<()> {
+        let mut arch_vm = self.inner.lock();
+        arch_vm.boot()
     }
 }
