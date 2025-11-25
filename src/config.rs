@@ -4,7 +4,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use axvm_types::addr::GuestPhysAddr;
+use crate::{GuestPhysAddr, HostPhysAddr};
 
 pub use axvmconfig::{
     AxVMCrateConfig, EmulatedDeviceConfig, PassThroughAddressConfig, PassThroughDeviceConfig,
@@ -51,6 +51,16 @@ pub struct VMImagesConfig {
     pub ramdisk: Option<VMImageConfig>,
 }
 
+#[derive(Debug, Clone)]
+pub enum MemoryKind {
+    /// Use identical memory regions
+    Identical { size: usize },
+    /// Use memory regions mapped from host physical address
+    Passthrough { hpa: HostPhysAddr, size: usize },
+    /// Use fixed memory regions
+    Fixed { gpa: GuestPhysAddr, size: usize },
+}
+
 /// A part of `AxVMCrateConfig`, which represents a `VM`.
 #[derive(Debug, Default)]
 pub struct AxVMConfig {
@@ -63,6 +73,7 @@ pub struct AxVMConfig {
     pub pass_through_devices: Vec<PassThroughDeviceConfig>,
     pub excluded_devices: Vec<Vec<String>>,
     pub pass_through_addresses: Vec<PassThroughAddressConfig>,
+    pub memory_regions: Vec<MemoryKind>,
     // TODO: improve interrupt passthrough
     pub spi_list: Vec<u32>,
     pub interrupt_mode: VMInterruptMode,
