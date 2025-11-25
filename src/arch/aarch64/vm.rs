@@ -4,6 +4,7 @@ use super::AddrSpace;
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 use crate::{
+    GuestPhysAddr,
     arch::{RunData, cpu::VCpu},
     config::AxVMConfig,
     vhal::cpu::CpuId,
@@ -46,16 +47,29 @@ impl ArchVm {
 
         // Create vCPUs
         let mut vcpus = Vec::new();
-        let dtb_addr = config
-            .image_config
-            .dtb_load_gpa
-            .map(|d| d.as_usize())
-            .unwrap_or_default();
+        // let dtb_addr = config
+        //     .image_config
+        //     .dtb_load_gpa
+        //     .map(|d| d.as_usize())
+        //     .unwrap_or_default();
 
-        for cfg in config.phys_cpu_ls.iter() {
-            let vcpu = VCpu::new(cfg.pcpu_id.map(|id| CpuId::new(id)), dtb_addr.into())?;
-            debug!("Created vCPU with {:?}", vcpu.id);
-            vcpus.push(vcpu);
+        let dtb_addr = GuestPhysAddr::from_usize(0);
+
+        match config.cpu_num {
+            crate::config::CpuNumType::Alloc(num) => {
+                for i in 0..num {
+                    let vcpu = VCpu::new(None, dtb_addr)?;
+                    debug!("Created vCPU with {:?}", vcpu.id);
+                    vcpus.push(vcpu);
+                }
+            }
+            crate::config::CpuNumType::Fixed(ref ids) => {
+                for id in ids {
+                    let vcpu = VCpu::new(Some(*id), dtb_addr)?;
+                    debug!("Created vCPU with {:?}", vcpu.id);
+                    vcpus.push(vcpu);
+                }
+            }
         }
 
         let vcpu_count = vcpus.len();

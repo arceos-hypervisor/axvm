@@ -29,7 +29,9 @@ mod vm;
 pub mod config;
 pub mod vhal;
 
+pub use axvm_types::addr::*;
 pub use config::AxVMConfig;
+pub use vhal::cpu::CpuId;
 pub use vm::*;
 
 /// Enable hardware virtualization support.
