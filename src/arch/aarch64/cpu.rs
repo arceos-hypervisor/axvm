@@ -82,20 +82,28 @@ pub struct VCpu {
 }
 
 impl VCpu {
-    pub fn new(host_cpuid: Option<CpuId>, dtb_addr: HostVirtAddr) -> anyhow::Result<Self> {
+    pub fn new(host_cpuid: Option<CpuId>, dtb_addr: GuestPhysAddr) -> anyhow::Result<Self> {
         let hcpu_exclusive = HCpuExclusive::try_new(host_cpuid)
             .ok_or_else(|| anyhow!("Failed to allocate cpu with id `{host_cpuid:?}`"))?;
 
+        let hard_id = hcpu_exclusive.hard_id();
+
         let vcpu = arm_vcpu::Aarch64VCpu::new(Aarch64VCpuCreateConfig {
-            mpidr_el1: hcpu_exclusive.hard_id().raw() as u64,
+            mpidr_el1: hard_id.raw() as u64,
             dtb_addr: dtb_addr.as_usize(),
         })
         .unwrap();
-        todo!()
-        // Ok(VCpu {
-        //     v_hard_id,
-        //     vcpu,
-        //     hcpu: hcpu_id,
-        // })
+        Ok(VCpu {
+            id: hard_id,
+            vcpu,
+            hcpu: hcpu_exclusive,
+        })
+    }
+
+    pub fn with_hcpu<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&HCpu) -> R,
+    {
+        self.hcpu.with_cpu(f)
     }
 }

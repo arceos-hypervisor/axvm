@@ -4,18 +4,16 @@ use core::fmt;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use memory_addr::VirtAddr;
 
-use crate::alloc::alloc::{self, Layout};
-use crate::alloc::collections::BTreeMap;
-use crate::alloc::string::String;
-use crate::alloc::sync::Arc;
-use crate::alloc::vec;
-use crate::alloc::vec::Vec;
+use crate::alloc::{collections::BTreeMap, string::String, vec::Vec};
+use crate::arch::cpu::VCpu;
 use crate::fdt;
-use crate::vhal::cpu::CpuHardId;
-use crate::vhal::{ArchHal, cpu::CpuId};
+use crate::vhal::{
+    ArchHal,
+    cpu::{CpuHardId, CpuId},
+};
 
 use aarch64_cpu::registers::{ReadWriteable, Readable, Writeable};
-use axaddrspace::{AddrSpace, AxMmHal, GuestPhysAddr, HostPhysAddr, MappingFlags};
+use axaddrspace::{AxMmHal, MappingFlags};
 use axerrno::{AxResult, ax_err};
 use page_table_multiarch::PagingHandler;
 
@@ -26,6 +24,8 @@ mod vm;
 
 pub use cpu::HCpu;
 pub use vm::*;
+
+type AddrSpace = axaddrspace::AddrSpace<axhal::paging::PagingHandlerImpl>;
 
 pub struct Hal;
 
@@ -66,67 +66,11 @@ impl fmt::Display for VmId {
 
 /// Data needed when VM is running
 pub struct RunData {
-    // vcpus: BTreeMap<usize, AxVCpuRef<DummyHal>>,
-    // address_space: AddrSpace<DummyPagingHandler>,
+    vcpus: Vec<VCpu>,
+    address_space: AddrSpace,
     devices: BTreeMap<String, DeviceInfo>,
 }
 
 /// Information about a device in the VM
 #[derive(Debug, Clone)]
-pub struct DeviceInfo {
-    /// Device type (emulated or passthrough)
-    pub device_type: DeviceType,
-    /// Base address in guest physical memory
-    pub gpa: GuestPhysAddr,
-    /// Base address in host physical memory (for passthrough)
-    pub hpa: Option<HostPhysAddr>,
-    /// Size of the device memory region
-    pub size: usize,
-    /// Device-specific configuration
-    pub config: DeviceConfig,
-}
-
-/// Device type
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeviceType {
-    /// Emulated device
-    Emulated,
-    /// Passthrough device
-    Passthrough,
-}
-
-/// Device-specific configuration
-#[derive(Debug, Clone)]
-pub enum DeviceConfig {
-    /// Generic MMIO device
-    Mmio {
-        /// Access flags
-        flags: MappingFlags,
-    },
-    /// Generic PCI device
-    Pci {
-        /// PCI bus number
-        bus: u8,
-        /// PCI device number
-        device: u8,
-        /// PCI function number
-        function: u8,
-    },
-    /// Interrupt controller
-    InterruptController {
-        /// Controller type (GICv2, GICv3, etc.)
-        controller_type: String,
-        /// Number of interrupt lines
-        num_interrupts: u32,
-    },
-    /// Timer device
-    Timer {
-        /// Timer type
-        timer_type: String,
-    },
-    /// Other device type
-    Other {
-        /// Device-specific data
-        data: Vec<u8>,
-    },
-}
+pub struct DeviceInfo {}

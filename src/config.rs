@@ -198,7 +198,23 @@ pub struct PhysCpuList {
     phys_cpu_sets: Option<Vec<usize>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct CpuConfig {
+    pub vcpu_id: usize,
+    pub pcpu_id: Option<usize>,
+}
+
 impl PhysCpuList {
+    pub fn iter(&self) -> impl Iterator<Item = CpuConfig> + '_ {
+        (0..self.cpu_num).map(move |vcpu_id| {
+            let pcpu_id = self
+                .phys_cpu_ids
+                .as_ref()
+                .and_then(|ids| ids.get(vcpu_id).cloned());
+            CpuConfig { vcpu_id, pcpu_id }
+        })
+    }
+
     /// Returns vCpu id list and its corresponding pCpu affinity list, as well as its physical id.
     /// If the pCpu affinity is None, it means the vCpu will be allocated to any available pCpu randomly.
     /// if the pCPU id is not provided, the vCpu's physical id will be set as vCpu id.
