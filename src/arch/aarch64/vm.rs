@@ -37,11 +37,11 @@ impl ArchVm {
         };
 
         // Create vCPUs
-        let mut vcpus = BTreeMap::new();
+        // let mut vcpus = BTreeMap::new();
 
-        for (hard_id, cpu_config) in config.phys_cpu_ls.iter() {
-         
-        }
+        // for (hard_id, cpu_config) in config.phys_cpu_ls.iter() {
+            
+        // }
 
 
         let vcpu_count = config.phys_cpu_ls.cpu_num();
