@@ -28,6 +28,7 @@ page_table_entry = {version = "0.5", features = ["arm-el2"]}
 page_table_multiarch = "0.5"
 percpu = {version = "0.2", features = ["arm-el2"]}
 vm-allocator.workspace = true
+bitmap-allocator = "0.2.1"
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axaddrspace = "0.2"
@@ -39,6 +40,7 @@ axconfig = {workspace = true}
 axhal.workspace = true
 axruntime.workspace = true
 axtask.workspace = true
+axvm-types.workspace = true
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 # x86_vcpu = "0.1"

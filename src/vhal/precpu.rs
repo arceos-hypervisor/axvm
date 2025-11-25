@@ -3,7 +3,7 @@ use core::{cell::UnsafeCell, ops::Deref};
 
 use crate::{
     arch::Hal,
-    vhal::{ArchHal, CpuHardId},
+    vhal::{ArchHal, cpu::CpuHardId},
 };
 
 pub(crate) struct PreCpuSet<T>(UnsafeCell<BTreeMap<CpuHardId, Option<T>>>);
@@ -28,6 +28,12 @@ impl<T> PreCpuSet<T> {
             let v = unsafe { &mut *self.0.get() };
             v.insert(cpu_id, None);
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (CpuHardId, &T)> {
+        let set = unsafe { &*self.0.get() };
+        set.iter()
+            .map(|(k, v)| (*k, v.as_ref().expect("CPU data not initialized!")))
     }
 }
 

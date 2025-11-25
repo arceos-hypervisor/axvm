@@ -2,12 +2,13 @@ use core::fmt::Display;
 
 use aarch64_cpu::registers::*;
 use alloc::sync::Weak;
-use arm_vcpu::Aarch64PerCpu;
+use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
 use axhal::percpu::this_cpu_id;
+use axvm_types::addr::*;
 
-use crate::{
-    fdt,
-    vhal::{ArchCpuData, ArchHal, CpuHardId, CpuId, precpu::PreCpuSet},
+use crate::vhal::{
+    ArchCpuData,
+    cpu::{CpuHardId, CpuId, HCpuExclusive},
 };
 
 pub struct HCpu {
@@ -44,7 +45,7 @@ impl HCpu {
 }
 
 impl ArchCpuData for HCpu {
-    fn hard_id(&self) -> crate::vhal::CpuHardId {
+    fn hard_id(&self) -> CpuHardId {
         self.hard_id
     }
 }
@@ -75,19 +76,26 @@ impl arm_vcpu::CpuHal for VCpuHal {
 }
 
 pub struct VCpu {
-    pub v_hard_id: CpuHardId,
+    pub id: CpuHardId,
     pub vcpu: arm_vcpu::Aarch64VCpu,
-    hcpu: CpuHardId,
+    hcpu: HCpuExclusive,
 }
 
 impl VCpu {
-    // pub fn new(config: &) -> Self {
-    //     let vcpu = arm_vcpu::Aarch64VCpu::new(VCpuHal);
+    pub fn new(host_cpuid: Option<CpuId>, dtb_addr: HostVirtAddr) -> anyhow::Result<Self> {
+        let hcpu_exclusive = HCpuExclusive::try_new(host_cpuid)
+            .ok_or_else(|| anyhow!("Failed to allocate cpu with id `{host_cpuid:?}`"))?;
 
-    //     VCpu {
-    //         v_hard_id,
-    //         vcpu,
-    //         hcpu: hcpu_id,
-    //     }
-    // }
+        let vcpu = arm_vcpu::Aarch64VCpu::new(Aarch64VCpuCreateConfig {
+            mpidr_el1: hcpu_exclusive.hard_id().raw() as u64,
+            dtb_addr: dtb_addr.as_usize(),
+        })
+        .unwrap();
+        todo!()
+        // Ok(VCpu {
+        //     v_hard_id,
+        //     vcpu,
+        //     hcpu: hcpu_id,
+        // })
+    }
 }

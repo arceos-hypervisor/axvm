@@ -11,7 +11,8 @@ use crate::alloc::sync::Arc;
 use crate::alloc::vec;
 use crate::alloc::vec::Vec;
 use crate::fdt;
-use crate::vhal::{ArchHal, CpuId};
+use crate::vhal::cpu::CpuHardId;
+use crate::vhal::{ArchHal, cpu::CpuId};
 
 use aarch64_cpu::registers::{ReadWriteable, Readable, Writeable};
 use axaddrspace::{AddrSpace, AxMmHal, GuestPhysAddr, HostPhysAddr, MappingFlags};
@@ -42,17 +43,17 @@ impl ArchHal for Hal {
         Ok(())
     }
 
-    fn cpu_list() -> Vec<crate::vhal::CpuHardId> {
+    fn cpu_list() -> Vec<CpuHardId> {
         fdt::cpu_list()
             .unwrap()
             .into_iter()
-            .map(crate::vhal::CpuHardId::new)
+            .map(CpuHardId::new)
             .collect()
     }
 
-    fn cpu_hard_id() -> crate::vhal::CpuHardId {
+    fn cpu_hard_id() -> CpuHardId {
         let mpidr = MPIDR_EL1.get() as usize;
-        crate::vhal::CpuHardId::new(mpidr)
+        CpuHardId::new(mpidr)
     }
 }
 
