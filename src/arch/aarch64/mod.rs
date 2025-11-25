@@ -64,13 +64,3 @@ impl fmt::Display for VmId {
     }
 }
 
-/// Data needed when VM is running
-pub struct RunData {
-    vcpus: Vec<VCpu>,
-    address_space: AddrSpace,
-    devices: BTreeMap<String, DeviceInfo>,
-}
-
-/// Information about a device in the VM
-#[derive(Debug, Clone)]
-pub struct DeviceInfo {}

@@ -4,11 +4,12 @@ use super::AddrSpace;
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 use crate::{
-    GuestPhysAddr,
-    arch::{RunData, cpu::VCpu},
-    config::AxVMConfig,
-    vhal::cpu::CpuId,
+    arch::cpu::VCpu,
+    config::{AxVMConfig, MemoryKind},
+    region::Region,
+    vhal::{cpu::CpuId, phys_to_virt},
     vm::{Status, VmId, VmOps},
+    {GuestPhysAddr, HostPhysAddr, HostVirtAddr},
 };
 
 const VM_ASPACE_BASE: usize = 0x0;
@@ -47,11 +48,6 @@ impl ArchVm {
 
         // Create vCPUs
         let mut vcpus = Vec::new();
-        // let dtb_addr = config
-        //     .image_config
-        //     .dtb_load_gpa
-        //     .map(|d| d.as_usize())
-        //     .unwrap_or_default();
 
         let dtb_addr = GuestPhysAddr::from_usize(0);
 
@@ -94,8 +90,24 @@ impl ArchVm {
         )
         .map_err(|e| anyhow::anyhow!("Failed to create address space: {:?}", e))?;
 
-        // // Initialize devices
-        // let mut devices = BTreeMap::new();
+        let mut run_data = RunData {
+            vcpus,
+            address_space,
+            regions: Vec::new(),
+            devices: BTreeMap::new(),
+        };
+
+        debug!("Mapping memory regions for VM {} ({})", self.id, self.name);
+        for memory_cfg in config.memory_regions {
+            run_data.add_memory_region(memory_cfg)?;
+        }
+
+        debug!(
+            "Mapped {} memory regions for VM {} ({})",
+            run_data.regions.len(),
+            self.id,
+            self.name
+        );
 
         // // Add emulated devices
         // for emu_device in config.emu_devices() {
@@ -184,11 +196,7 @@ impl ArchVm {
         //         .map_err(|e| anyhow::anyhow!("Failed to setup vCPU {}: {:?}", vcpu_id, e))?;
         // }
 
-        // self.state = Some(StateMachine::Inited(RunData {
-        //     vcpus,
-        //     address_space,
-        //     devices,
-        // }));
+        self.state = Some(StateMachine::Inited(run_data));
 
         Ok(())
     }
@@ -499,3 +507,36 @@ enum StateMachine {
     ShuttingDown(RunData),
     PoweredOff,
 }
+
+/// Data needed when VM is running
+pub struct RunData {
+    vcpus: Vec<VCpu>,
+    address_space: AddrSpace,
+    regions: Vec<Region>,
+    devices: BTreeMap<String, DeviceInfo>,
+}
+
+impl RunData {
+    fn add_memory_region(&mut self, config: MemoryKind) -> anyhow::Result<()> {
+        let region = Region::new(config);
+        self.address_space
+            .map_linear(
+                region.gpa.as_usize().into(),
+                region.hva.as_usize().into(),
+                region.size,
+                axaddrspace::MappingFlags::READ
+                    | axaddrspace::MappingFlags::WRITE
+                    | axaddrspace::MappingFlags::EXECUTE
+                    | axaddrspace::MappingFlags::USER,
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to map memory region: {:?}", e))?;
+
+        self.regions.push(region);
+
+        Ok(())
+    }
+}
+
+/// Information about a device in the VM
+#[derive(Debug, Clone)]
+pub struct DeviceInfo {}

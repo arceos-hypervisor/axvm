@@ -12,6 +12,7 @@ use crate::{
         cpu::{CpuHardId, CpuId},
         precpu::PreCpuSet,
     },
+    {HostPhysAddr, HostVirtAddr},
 };
 use axconfig::TASK_STACK_SIZE;
 use axtask::AxCpuMask;
@@ -81,4 +82,16 @@ pub(crate) trait ArchHal {
 
 pub(crate) trait ArchCpuData {
     fn hard_id(&self) -> CpuHardId;
+}
+
+pub fn phys_to_virt(paddr: HostPhysAddr) -> HostVirtAddr {
+    axhal::mem::phys_to_virt(paddr.as_usize().into())
+        .as_usize()
+        .into()
+}
+
+pub fn virt_to_phys(vaddr: HostVirtAddr) -> HostPhysAddr {
+    axhal::mem::virt_to_phys(vaddr.as_usize().into())
+        .as_usize()
+        .into()
 }
