@@ -18,12 +18,14 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use axaddrspace::GuestPhysAddr;
+use axvm_types::addr::GuestPhysAddr;
 
 pub use axvmconfig::{
     AxVMCrateConfig, EmulatedDeviceConfig, PassThroughAddressConfig, PassThroughDeviceConfig,
     VMInterruptMode, VMType, VmMemConfig, VmMemMappingType,
 };
+
+use crate::vhal::cpu::CpuId;
 
 // /// A part of `AxVCpuConfig`, which represents an architecture-dependent `VCpu`.
 // ///
@@ -43,69 +45,85 @@ pub struct AxVCpuConfig {
     pub ap_entry: GuestPhysAddr,
 }
 
-/// A part of `AxVMConfig`, which stores configuration attributes related to the load address of VM images.
 #[derive(Debug, Default, Clone)]
 pub struct VMImageConfig {
+    pub gpa: Option<GuestPhysAddr>,
+    pub data: Vec<u8>,
+}
+
+/// A part of `AxVMConfig`, which stores configuration attributes related to the load address of VM images.
+#[derive(Debug, Default, Clone)]
+pub struct VMImagesConfig {
     /// The load address in GPA for the kernel image.
-    pub kernel_load_gpa: GuestPhysAddr,
+    pub kernel: VMImageConfig,
     /// The load address in GPA for the BIOS image, `None` if not used.
-    pub bios_load_gpa: Option<GuestPhysAddr>,
+    pub bios: Option<VMImageConfig>,
     /// The load address in GPA for the device tree blob (DTB), `None` if not used.
-    pub dtb_load_gpa: Option<GuestPhysAddr>,
+    pub dtb: Option<VMImageConfig>,
     /// The load address in GPA for the ramdisk image, `None` if not used.
-    pub ramdisk_load_gpa: Option<GuestPhysAddr>,
+    pub ramdisk: Option<VMImageConfig>,
 }
 
 /// A part of `AxVMCrateConfig`, which represents a `VM`.
 #[derive(Debug, Default)]
 pub struct AxVMConfig {
-    id: usize,
-    name: String,
-    #[allow(dead_code)]
-    vm_type: VMType,
-    pub(crate) phys_cpu_ls: PhysCpuList,
+    pub id: usize,
+    pub name: String,
+    pub cpu_num: CpuNumType,
     pub cpu_config: AxVCpuConfig,
-    pub image_config: VMImageConfig,
-    emu_devices: Vec<EmulatedDeviceConfig>,
-    pass_through_devices: Vec<PassThroughDeviceConfig>,
-    excluded_devices: Vec<Vec<String>>,
-    pass_through_addresses: Vec<PassThroughAddressConfig>,
+    pub image_config: VMImagesConfig,
+    pub emu_devices: Vec<EmulatedDeviceConfig>,
+    pub pass_through_devices: Vec<PassThroughDeviceConfig>,
+    pub excluded_devices: Vec<Vec<String>>,
+    pub pass_through_addresses: Vec<PassThroughAddressConfig>,
     // TODO: improve interrupt passthrough
-    spi_list: Vec<u32>,
-    interrupt_mode: VMInterruptMode,
+    pub spi_list: Vec<u32>,
+    pub interrupt_mode: VMInterruptMode,
 }
 
-impl From<AxVMCrateConfig> for AxVMConfig {
-    fn from(cfg: AxVMCrateConfig) -> Self {
-        Self {
-            id: cfg.base.id,
-            name: cfg.base.name,
-            vm_type: VMType::from(cfg.base.vm_type),
-            phys_cpu_ls: PhysCpuList {
-                cpu_num: cfg.base.cpu_num,
-                phys_cpu_ids: cfg.base.phys_cpu_ids,
-                phys_cpu_sets: cfg.base.phys_cpu_sets,
-            },
-            cpu_config: AxVCpuConfig {
-                bsp_entry: GuestPhysAddr::from(cfg.kernel.entry_point),
-                ap_entry: GuestPhysAddr::from(cfg.kernel.entry_point),
-            },
-            image_config: VMImageConfig {
-                kernel_load_gpa: GuestPhysAddr::from(cfg.kernel.kernel_load_addr),
-                bios_load_gpa: cfg.kernel.bios_load_addr.map(GuestPhysAddr::from),
-                dtb_load_gpa: cfg.kernel.dtb_load_addr.map(GuestPhysAddr::from),
-                ramdisk_load_gpa: cfg.kernel.ramdisk_load_addr.map(GuestPhysAddr::from),
-            },
-            // memory_regions: cfg.kernel.memory_regions,
-            emu_devices: cfg.devices.emu_devices,
-            pass_through_devices: cfg.devices.passthrough_devices,
-            excluded_devices: cfg.devices.excluded_devices,
-            pass_through_addresses: cfg.devices.passthrough_addresses,
-            spi_list: Vec::new(),
-            interrupt_mode: cfg.devices.interrupt_mode,
-        }
+#[derive(Debug, Clone)]
+pub enum CpuNumType {
+    Alloc(usize),
+    Fixed(Vec<CpuId>),
+}
+
+impl Default for CpuNumType {
+    fn default() -> Self {
+        CpuNumType::Alloc(1)
     }
 }
+
+// impl From<AxVMCrateConfig> for AxVMConfig {
+//     fn from(cfg: AxVMCrateConfig) -> Self {
+//         Self {
+//             id: cfg.base.id,
+//             name: cfg.base.name,
+//             vm_type: VMType::from(cfg.base.vm_type),
+//             phys_cpu_ls: PhysCpuList {
+//                 cpu_num: cfg.base.cpu_num,
+//                 phys_cpu_ids: cfg.base.phys_cpu_ids,
+//                 phys_cpu_sets: cfg.base.phys_cpu_sets,
+//             },
+//             cpu_config: AxVCpuConfig {
+//                 bsp_entry: GuestPhysAddr::from(cfg.kernel.entry_point),
+//                 ap_entry: GuestPhysAddr::from(cfg.kernel.entry_point),
+//             },
+//             image_config: VMImagesConfig {
+//                 kernel_load_gpa: GuestPhysAddr::from(cfg.kernel.kernel_load_addr),
+//                 bios_load_gpa: cfg.kernel.bios_load_addr.map(GuestPhysAddr::from),
+//                 dtb_load_gpa: cfg.kernel.dtb_load_addr.map(GuestPhysAddr::from),
+//                 ramdisk_load_gpa: cfg.kernel.ramdisk_load_addr.map(GuestPhysAddr::from),
+//             },
+//             // memory_regions: cfg.kernel.memory_regions,
+//             emu_devices: cfg.devices.emu_devices,
+//             pass_through_devices: cfg.devices.passthrough_devices,
+//             excluded_devices: cfg.devices.excluded_devices,
+//             pass_through_addresses: cfg.devices.passthrough_addresses,
+//             spi_list: Vec::new(),
+//             interrupt_mode: cfg.devices.interrupt_mode,
+//         }
+//     }
+// }
 
 impl AxVMConfig {
     /// Returns VM id.
@@ -119,7 +137,7 @@ impl AxVMConfig {
     }
 
     /// Returns configurations related to VM image load addresses.
-    pub fn image_config(&self) -> &VMImageConfig {
+    pub fn image_config(&self) -> &VMImagesConfig {
         &self.image_config
     }
 
@@ -133,10 +151,6 @@ impl AxVMConfig {
     pub fn ap_entry(&self) -> GuestPhysAddr {
         // Retrieves AP entry from the CPU configuration.
         self.cpu_config.ap_entry
-    }
-
-    pub fn phys_cpu_ls_mut(&mut self) -> &mut PhysCpuList {
-        &mut self.phys_cpu_ls
     }
 
     pub fn excluded_devices(&self) -> &Vec<Vec<String>> {
@@ -201,84 +215,5 @@ impl AxVMConfig {
     /// Returns the interrupt mode of the VM.
     pub fn interrupt_mode(&self) -> VMInterruptMode {
         self.interrupt_mode
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct PhysCpuList {
-    cpu_num: usize,
-    phys_cpu_ids: Option<Vec<usize>>,
-    phys_cpu_sets: Option<Vec<usize>>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct CpuConfig {
-    pub vcpu_id: usize,
-    pub pcpu_id: Option<usize>,
-}
-
-impl PhysCpuList {
-    pub fn iter(&self) -> impl Iterator<Item = CpuConfig> + '_ {
-        (0..self.cpu_num).map(move |vcpu_id| {
-            let pcpu_id = self
-                .phys_cpu_ids
-                .as_ref()
-                .and_then(|ids| ids.get(vcpu_id).cloned());
-            CpuConfig { vcpu_id, pcpu_id }
-        })
-    }
-
-    /// Returns vCpu id list and its corresponding pCpu affinity list, as well as its physical id.
-    /// If the pCpu affinity is None, it means the vCpu will be allocated to any available pCpu randomly.
-    /// if the pCPU id is not provided, the vCpu's physical id will be set as vCpu id.
-    ///
-    /// Returns a vector of tuples, each tuple contains:
-    /// - The vCpu id.
-    /// - The pCpu affinity mask, `None` if not set.
-    /// - The physical id of the vCpu, equal to vCpu id if not provided.
-    pub fn get_vcpu_affinities_pcpu_ids(&self) -> Vec<(usize, Option<usize>, usize)> {
-        let mut vcpu_pcpu_tuples = Vec::new();
-
-        if let Some(phys_cpu_ids) = &self.phys_cpu_ids {
-            if self.cpu_num != phys_cpu_ids.len() {
-                error!(
-                    "ERROR!!!: cpu_num: {}, phys_cpu_ids: {:?}",
-                    self.cpu_num, self.phys_cpu_ids
-                );
-            }
-        }
-
-        for vcpu_id in 0..self.cpu_num {
-            vcpu_pcpu_tuples.push((vcpu_id, None, vcpu_id));
-        }
-
-        if let Some(phys_cpu_sets) = &self.phys_cpu_sets {
-            for (vcpu_id, pcpu_mask_bitmap) in phys_cpu_sets.iter().enumerate() {
-                vcpu_pcpu_tuples[vcpu_id].1 = Some(*pcpu_mask_bitmap);
-            }
-        }
-
-        if let Some(phys_cpu_ids) = &self.phys_cpu_ids {
-            for (vcpu_id, phys_id) in phys_cpu_ids.iter().enumerate() {
-                vcpu_pcpu_tuples[vcpu_id].2 = *phys_id;
-            }
-        }
-        vcpu_pcpu_tuples
-    }
-
-    pub fn cpu_num(&self) -> usize {
-        self.cpu_num
-    }
-
-    pub fn phys_cpu_ids(&self) -> &Option<Vec<usize>> {
-        &self.phys_cpu_ids
-    }
-
-    pub fn phys_cpu_sets(&self) -> &Option<Vec<usize>> {
-        &self.phys_cpu_sets
-    }
-
-    pub fn set_guest_cpu_sets(&mut self, phys_cpu_sets: Vec<usize>) {
-        self.phys_cpu_sets = Some(phys_cpu_sets);
     }
 }
