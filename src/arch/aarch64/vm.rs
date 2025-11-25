@@ -1,17 +1,23 @@
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use alloc::{collections::BTreeMap, string::String};
+use super::AddrSpace;
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 use crate::{
-    arch::RunData,
+    arch::{RunData, cpu::VCpu},
     config::AxVMConfig,
+    vhal::cpu::CpuId,
     vm::{Status, VmId, VmOps},
 };
+
+const VM_ASPACE_BASE: usize = 0x0;
+const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
 
 /// AArch64 Virtual Machine implementation
 pub struct ArchVm {
     pub id: VmId,
     pub name: String,
+    pt_levels: usize,
     state: Option<StateMachine>,
     stop_requested: AtomicBool,
     exit_code: AtomicUsize,
@@ -23,6 +29,7 @@ impl ArchVm {
         let vm = Self {
             id: config.id().into(),
             name: config.name(),
+            pt_levels: 4,
             state: Some(StateMachine::Idle(config)),
             stop_requested: AtomicBool::new(false),
             exit_code: AtomicUsize::new(0),
@@ -32,25 +39,46 @@ impl ArchVm {
 
     /// Initializes the VM, creating vCPUs and setting up memory
     pub fn init(&mut self) -> anyhow::Result<()> {
+        debug!("Initializing VM {} ({})", self.id, self.name);
         let StateMachine::Idle(config) = self.state.take().unwrap() else {
             return Err(anyhow::anyhow!("VM is not in Idle state"));
         };
 
         // Create vCPUs
-        // let mut vcpus = BTreeMap::new();
+        let mut vcpus = Vec::new();
+        let dtb_addr = config
+            .image_config
+            .dtb_load_gpa
+            .map(|d| d.as_usize())
+            .unwrap_or_default();
 
-        // for (hard_id, cpu_config) in config.phys_cpu_ls.iter() {
-            
-        // }
+        for cfg in config.phys_cpu_ls.iter() {
+            let vcpu = VCpu::new(cfg.pcpu_id.map(|id| CpuId::new(id)), dtb_addr.into())?;
+            debug!("Created vCPU with {:?}", vcpu.id);
+            vcpus.push(vcpu);
+        }
 
+        let vcpu_count = vcpus.len();
 
-        let vcpu_count = config.phys_cpu_ls.cpu_num();
+        for vcpu in &vcpus {
+            let max_levels = vcpu.with_hcpu(|cpu| cpu.max_guest_page_table_levels());
+            if max_levels < self.pt_levels {
+                self.pt_levels = max_levels;
+            }
+        }
 
-    
+        debug!(
+            "VM {} ({}) vCPU count: {}, Max Guest Page Table Levels: {}",
+            self.id, self.name, vcpu_count, self.pt_levels
+        );
 
-        // // Create address space for the VM
-        // let address_space = AddrSpace::new_empty(GuestPhysAddr::from(0x0), 0x7fff_ffff_f000)
-        //     .map_err(|e| anyhow::anyhow!("Failed to create address space: {:?}", e))?;
+        // Create address space for the VM
+        let address_space = AddrSpace::new_empty(
+            self.pt_levels,
+            axaddrspace::GuestPhysAddr::from(VM_ASPACE_BASE),
+            VM_ASPACE_SIZE,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create address space: {:?}", e))?;
 
         // // Initialize devices
         // let mut devices = BTreeMap::new();
@@ -196,13 +224,13 @@ impl ArchVm {
         match self.get_state_mut() {
             StateMachine::Running(data) => {
                 // Transition to ShuttingDown state
-                let new_data = RunData {
-                    // vcpus: BTreeMap::new(),
-                    // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
-                    devices: BTreeMap::new(),
-                };
-                let old_data = core::mem::replace(data, new_data);
-                self.transition_state(StateMachine::ShuttingDown(old_data))?;
+                // let new_data = RunData {
+                //     // vcpus: BTreeMap::new(),
+                //     // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
+                //     devices: BTreeMap::new(),
+                // };
+                // let old_data = core::mem::replace(data, new_data);
+                // self.transition_state(StateMachine::ShuttingDown(old_data))?;
 
                 // Clean up resources
                 self.cleanup_resources()?;
@@ -258,13 +286,13 @@ impl VmOps for ArchVm {
         };
 
         // Transition to Running state
-        let new_data = RunData {
-            // vcpus: BTreeMap::new(),
-            // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
-            devices: BTreeMap::new(),
-        };
-        let old_data = core::mem::replace(data, new_data);
-        self.transition_state(StateMachine::Running(old_data))?;
+        // let new_data = RunData {
+        //     // vcpus: BTreeMap::new(),
+        //     // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
+        //     devices: BTreeMap::new(),
+        // };
+        // let old_data = core::mem::replace(data, new_data);
+        // self.transition_state(StateMachine::Running(old_data))?;
 
         // // Start all vCPUs
         // let vcpus = self.get_vcpus();
@@ -372,14 +400,14 @@ impl ArchVm {
             _ => return Err(anyhow::anyhow!("VM is not in Running state")),
         };
 
-        // Transition to Inited state
-        let new_data = RunData {
-            // vcpus: BTreeMap::new(),
-            // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
-            devices: BTreeMap::new(),
-        };
-        let old_data = core::mem::replace(data, new_data);
-        self.transition_state(StateMachine::Inited(old_data))?;
+        // // Transition to Inited state
+        // let new_data = RunData {
+        //     // vcpus: BTreeMap::new(),
+        //     // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
+        //     devices: BTreeMap::new(),
+        // };
+        // let old_data = core::mem::replace(data, new_data);
+        // self.transition_state(StateMachine::Inited(old_data))?;
 
         // // Unbind all vCPUs
         // let vcpus = self.get_vcpus();
@@ -401,14 +429,14 @@ impl ArchVm {
             _ => return Err(anyhow::anyhow!("VM is not in Inited state")),
         };
 
-        // Transition to Running state
-        let new_data = RunData {
-            // vcpus: BTreeMap::new(),
-            // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
-            devices: BTreeMap::new(),
-        };
-        let old_data = core::mem::replace(data, new_data);
-        self.transition_state(StateMachine::Running(old_data))?;
+        // // Transition to Running state
+        // let new_data = RunData {
+        //     // vcpus: BTreeMap::new(),
+        //     // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
+        //     devices: BTreeMap::new(),
+        // };
+        // let old_data = core::mem::replace(data, new_data);
+        // self.transition_state(StateMachine::Running(old_data))?;
 
         // // Bind all vCPUs
         // let vcpus = self.get_vcpus();
