@@ -75,6 +75,7 @@ pub fn cpu_count() -> usize {
 
 pub(crate) trait ArchHal {
     fn init() -> anyhow::Result<()>;
+    fn cache_flush(vaddr: HostVirtAddr, size: usize);
     fn cpu_hard_id() -> CpuHardId;
     fn cpu_list() -> Vec<CpuHardId>;
     fn current_cpu_init(id: CpuId) -> anyhow::Result<HCpu>;

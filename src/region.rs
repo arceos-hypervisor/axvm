@@ -19,38 +19,38 @@ pub struct Region {
 }
 
 impl Region {
-    pub fn new(kind: MemoryKind) -> Self {
+    pub fn new(kind: &MemoryKind) -> Self {
         match kind {
             MemoryKind::Identical { size } => {
                 let hva = HostVirtAddr::from(unsafe {
-                    alloc::alloc::alloc(Layout::from_size_align_unchecked(size, ALIGN))
+                    alloc::alloc::alloc(Layout::from_size_align_unchecked(*size, ALIGN))
                 } as usize);
                 let gpa = GuestPhysAddr::from_usize(virt_to_phys(hva).as_usize());
                 Region {
                     gpa,
                     hva,
-                    size,
+                    size: *size,
                     own: true,
                 }
             }
             MemoryKind::Passthrough { hpa, size } => {
-                let hva = phys_to_virt(hpa);
+                let hva = phys_to_virt(*hpa);
                 let gpa = GuestPhysAddr::from_usize(hva.as_usize());
                 Region {
                     gpa,
                     hva,
-                    size,
+                    size: *size,
                     own: false,
                 }
             }
             MemoryKind::Fixed { gpa, size } => {
                 let hva = HostVirtAddr::from(unsafe {
-                    alloc::alloc::alloc(Layout::from_size_align_unchecked(size, ALIGN))
+                    alloc::alloc::alloc(Layout::from_size_align_unchecked(*size, ALIGN))
                 } as usize);
                 Region {
-                    gpa,
+                    gpa: *gpa,
                     hva,
-                    size,
+                    size: *size,
                     own: true,
                 }
             }

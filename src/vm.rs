@@ -421,9 +421,8 @@ pub struct Vm {
 
 impl Vm {
     pub fn new(config: AxVMConfig) -> anyhow::Result<Self> {
-        let mut arch_vm = crate::arch::ArchVm::new(config)?;
-        arch_vm.init()?;
-
+        let mut arch_vm = crate::arch::ArchVm::new(&config)?;
+        arch_vm.init(config)?;
         Ok(Vm {
             id: arch_vm.id(),
             name: arch_vm.name().into(),

@@ -80,7 +80,6 @@ pub struct AxVMConfig {
     pub id: usize,
     pub name: String,
     pub cpu_num: CpuNumType,
-    pub cpu_config: AxVCpuConfig,
     pub image_config: VMImagesConfig,
     pub emu_devices: Vec<EmulatedDeviceConfig>,
     pub pass_through_devices: Vec<PassThroughDeviceConfig>,
@@ -150,18 +149,6 @@ impl AxVMConfig {
     /// Returns configurations related to VM image load addresses.
     pub fn image_config(&self) -> &VMImagesConfig {
         &self.image_config
-    }
-
-    /// Returns the entry address in GPA for the Bootstrap Processor (BSP).
-    pub fn bsp_entry(&self) -> GuestPhysAddr {
-        // Retrieves BSP entry from the CPU configuration.
-        self.cpu_config.bsp_entry
-    }
-
-    /// Returns the entry address in GPA for the Application Processor (AP).
-    pub fn ap_entry(&self) -> GuestPhysAddr {
-        // Retrieves AP entry from the CPU configuration.
-        self.cpu_config.ap_entry
     }
 
     pub fn excluded_devices(&self) -> &Vec<Vec<String>> {
