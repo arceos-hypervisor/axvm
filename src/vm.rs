@@ -593,16 +593,18 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         hpa: HostPhysAddr,
         size: usize,
         flags: MappingFlags,
-    ) -> AxResult<()> {
+    ) -> AxResult {
         self.inner_mut
             .lock()
             .address_space
-            .map_linear(gpa, hpa, size, flags)
+            .map_linear(gpa, hpa, size, flags)?;
+        Ok(())
     }
 
     /// Unmaps a region of guest physical memory.
-    pub fn unmap_region(&self, gpa: GuestPhysAddr, size: usize) -> AxResult<()> {
-        self.inner_mut.lock().address_space.unmap(gpa, size)
+    pub fn unmap_region(&self, gpa: GuestPhysAddr, size: usize) -> AxResult {
+        self.inner_mut.lock().address_space.unmap(gpa, size)?;
+        Ok(())
     }
 
     /// Reads an object of type `T` from the guest physical address.
@@ -692,7 +694,8 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     /// ## Returns
     /// * `AxResult<()>` - An empty result indicating success or failure.
     pub fn release_ivc_channel(&self, gpa: GuestPhysAddr, size: usize) -> AxResult {
-        self.inner_const().devices.release_ivc_channel(gpa, size)
+        self.inner_const().devices.release_ivc_channel(gpa, size)?;
+        Ok(())
     }
 
     pub fn alloc_memory_region(
