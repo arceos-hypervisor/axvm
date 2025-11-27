@@ -179,7 +179,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             #[cfg(target_arch = "riscv64")]
             let arch_config = AxVCpuCreateConfig {
                 hart_id: vcpu_id as _,
-                dtb_addr: dtb_addr.unwrap_or_default().as_usize(),
+                dtb_addr: dtb_addr.unwrap_or_default(),
             };
             #[cfg(target_arch = "x86_64")]
             let arch_config = AxVCpuCreateConfig::default();
@@ -275,7 +275,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                                 gicd.assign_irq(*spi + 32, cpu_id, (0, 0, 0, cpu_id as _))
                             }
 
-                            Ok(())
+                            AxResult::Ok(())
                         },
                     ) {
                         result?;
