@@ -1,6 +1,4 @@
-use core::{alloc::Layout, ops::Range};
-
-use alloc::vec::Vec;
+use core::alloc::Layout;
 
 use crate::{
     GuestPhysAddr, HostVirtAddr,

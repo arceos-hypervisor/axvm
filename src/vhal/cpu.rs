@@ -38,11 +38,9 @@ impl HCpuExclusive {
     where
         F: FnOnce(&HCpu) -> R,
     {
-        unsafe {
-            for (id, cpu) in PRE_CPU.iter() {
-                if cpu.id == self.0 {
-                    return f(cpu);
-                }
+        for (id, cpu) in PRE_CPU.iter() {
+            if cpu.id == self.0 {
+                return f(cpu);
             }
         }
         panic!("CPU data not found for CPU ID {}", self.0);
