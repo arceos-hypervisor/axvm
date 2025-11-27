@@ -6,13 +6,7 @@ use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use arm_vcpu::Aarch64VCpuSetupConfig;
 
 use crate::{
-    GuestPhysAddr, HostPhysAddr, HostVirtAddr, RunError, TASK_STACK_SIZE, VmStatusInitOps,
-    VmStatusRunningOps, VmStatusStoppingOps,
-    arch::cpu::VCpu,
-    config::{AxVMConfig, MemoryKind},
-    region::GuestRegion,
-    vhal::{ArchHal, cpu::CpuId, phys_to_virt, virt_to_phys},
-    vm::{Status, VmId},
+    GuestPhysAddr, HostPhysAddr, HostVirtAddr, RunError, TASK_STACK_SIZE, VmStatusInitOps, VmStatusRunningOps, VmStatusStoppingOps, arch::cpu::VCpu, config::{AxVMConfig, MemoryKind}, fdt::fdt, region::GuestRegion, vhal::{ArchHal, cpu::CpuId, phys_to_virt, virt_to_phys}, vm::{Status, VmId}
 };
 
 const VM_ASPACE_BASE: usize = 0x0;
@@ -411,6 +405,15 @@ impl VmStatusRunning {
             );
             self.dtb_addr = gpa;
             self.load_image_data(gpa, &dtb_cfg.data)?;
+        } else {
+            debug!(
+                "No dtb provided, generating new dtb for {} ({})",
+                config.id(),
+                config.name()
+            );
+            let fdt = fdt().unwrap();
+            let dtb_bytes = fdt.as_slice();
+            
         }
 
         Ok(())
