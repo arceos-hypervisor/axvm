@@ -48,8 +48,8 @@ pub fn init() -> anyhow::Result<()> {
                 info!("Enabling hardware virtualization support on core {id}");
                 timer::init_percpu();
 
-                // let cpu_data = Hal::current_cpu_init(id).expect("Enable virtualization failed!");
-                // unsafe { cpu::PRE_CPU.set(cpu_data.hard_id(), cpu_data) };
+                let cpu_data = Hal::current_cpu_init(id).expect("Enable virtualization failed!");
+                unsafe { cpu::PRE_CPU.set(cpu_data.hard_id(), cpu_data) };
                 let _ = CORES.fetch_add(1, Ordering::Release);
             })
             .map_err(|e| anyhow!("{e:?}"))?;
@@ -65,8 +65,6 @@ pub fn init() -> anyhow::Result<()> {
     cpu::HCPU_ALLOC.lock().insert(0..cpu_count);
 
     info!("All cores have enabled hardware virtualization support.");
-
-
 
     Ok(())
 }

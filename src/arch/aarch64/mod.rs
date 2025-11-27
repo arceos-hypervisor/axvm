@@ -1,5 +1,4 @@
 use aarch64_cpu::registers::MPIDR_EL1;
-use aarch64_cpu_ext::asm::cache;
 use aarch64_cpu_ext::cache::{CacheOp, dcache_range};
 use axhal::percpu::this_cpu_id;
 use core::fmt;
@@ -42,7 +41,7 @@ impl ArchHal for Hal {
 
     fn init() -> anyhow::Result<()> {
         arm_vcpu::init_hal(&cpu::VCpuHal);
-     
+
         Ok(())
     }
 
