@@ -16,7 +16,9 @@ extern crate log;
 #[macro_use]
 extern crate anyhow;
 
-const TASK_STACK_SIZE: usize = 0x40000; // 16KB
+extern crate axstd as std;
+
+const TASK_STACK_SIZE: usize = 0x40000; // 256 KB
 
 #[cfg_attr(target_arch = "aarch64", path = "arch/aarch64/mod.rs")]
 #[cfg_attr(target_arch = "x86_64", path = "arch/x86_64/mod.rs")]

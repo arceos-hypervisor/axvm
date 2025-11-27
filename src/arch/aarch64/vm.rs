@@ -1,13 +1,15 @@
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity};
 
 use super::AddrSpace;
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use arm_vcpu::Aarch64VCpuSetupConfig;
 
 use crate::{
-    GuestPhysAddr, HostPhysAddr, HostVirtAddr,
+    GuestPhysAddr, HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE,
     arch::cpu::VCpu,
     config::{AxVMConfig, MemoryKind},
-    region::Region,
+    region::GuestRegion,
     vhal::{ArchHal, cpu::CpuId, phys_to_virt, virt_to_phys},
     vm::{Status, VmId, VmOps},
 };
@@ -115,12 +117,8 @@ impl ArchVm {
         );
 
         run_data.load_images(&config)?;
-        for vcpu in &mut run_data.vcpus {
-            vcpu.vcpu.set_entry(run_data.kernel_entry).unwrap();
-            vcpu.vcpu.set_dtb_addr(run_data.dtb_addr).unwrap();
-        }
 
-        // // Add emulated devices
+        // Add emulated devices
         // for emu_device in config.emu_devices() {
         //     let device_info = DeviceInfo {
         //         device_type: DeviceType::Emulated,
@@ -176,36 +174,27 @@ impl ArchVm {
         //     })?;
         // }
 
-        // // Setup vCPUs
-        // for (vcpu_id, vcpu) in &vcpus {
-        //     let entry = if *vcpu_id == 0 {
-        //         config.bsp_entry()
-        //     } else {
-        //         config.ap_entry()
-        //     };
+        // Setup vCPUs
+        for vcpu in &mut run_data.vcpus {
+            vcpu.vcpu.set_entry(run_data.kernel_entry).unwrap();
+            vcpu.vcpu.set_dtb_addr(run_data.dtb_addr).unwrap();
 
-        //     let setup_config = AxVCpuSetupConfig {
-        //         passthrough_interrupt: config.interrupt_mode()
-        //             == axvmconfig::VMInterruptMode::Passthrough,
-        //         passthrough_timer: config.interrupt_mode()
-        //             == axvmconfig::VMInterruptMode::Passthrough,
-        //     };
+            let setup_config = Aarch64VCpuSetupConfig {
+                passthrough_interrupt: config.interrupt_mode()
+                    == axvmconfig::VMInterruptMode::Passthrough,
+                passthrough_timer: config.interrupt_mode()
+                    == axvmconfig::VMInterruptMode::Passthrough,
+            };
 
-        //     // Set entry point first
-        //     vcpu.set_entry(entry).map_err(|e| {
-        //         anyhow::anyhow!("Failed to set entry for vCPU {}: {:?}", vcpu_id, e)
-        //     })?;
+            vcpu.vcpu
+                .setup(setup_config)
+                .map_err(|e| anyhow::anyhow!("Failed to setup vCPU : {e:?}"))?;
 
-        //     // Set EPT root
-        //     vcpu.set_ept_root(address_space.page_table_root())
-        //         .map_err(|e| {
-        //             anyhow::anyhow!("Failed to set EPT root for vCPU {}: {:?}", vcpu_id, e)
-        //         })?;
-
-        //     // Setup vCPU with configuration
-        //     vcpu.setup(setup_config)
-        //         .map_err(|e| anyhow::anyhow!("Failed to setup vCPU {}: {:?}", vcpu_id, e))?;
-        // }
+            // Set EPT root
+            vcpu.vcpu
+                .set_ept_root(run_data.address_space.page_table_root())
+                .map_err(|e| anyhow::anyhow!("Failed to set EPT root for vCPU : {e:?}"))?;
+        }
 
         self.state = StateMachine::Inited(run_data);
 
@@ -318,29 +307,44 @@ impl VmOps for ArchVm {
             _ => return Err(anyhow::anyhow!("VM is not in Inited state")),
         };
 
-        // Transition to Running state
-        // let new_data = RunData {
-        //     // vcpus: BTreeMap::new(),
-        //     // address_space: AddrSpace::new_empty(4, GuestPhysAddr::from(0), 0).unwrap(),
-        //     devices: BTreeMap::new(),
-        // };
-        // let old_data = core::mem::replace(data, new_data);
-        // self.transition_state(StateMachine::Running(old_data))?;
+        let mut vcpus = vec![];
+        vcpus.append(&mut data.vcpus);
+        let mut vcpu_handles = vec![];
+        let vm_id = self.id;
+        for mut vcpu in vcpus.into_iter() {
+            let vcpu_id = vcpu.id;
+            let bind_id = vcpu.binded_cpu_id();
+            let handle = std::thread::Builder::new()
+                .name(format!("{}-{vcpu_id}", self.id,))
+                .stack_size(TASK_STACK_SIZE)
+                .spawn(move || {
+                    assert!(
+                        set_current_affinity(AxCpuMask::one_shot(bind_id.raw())),
+                        "Initialize CPU affinity failed!"
+                    );
+                    match vcpu.run() {
+                        Ok(()) => {
+                            info!("vCPU {} of VM {} exited normally", vcpu_id, vm_id);
+                        }
+                        Err(e) => {
+                            error!(
+                                "vCPU {} of VM {} exited with error: {:?}",
+                                vcpu_id, vm_id, e
+                            );
+                        }
+                    }
+                })
+                .map_err(|e| anyhow!("{e}"))?;
 
-        // // Start all vCPUs
-        // let vcpus = self.get_vcpus();
-        // for (vcpu_id, vcpu) in vcpus.iter().enumerate() {
-        //     debug!("Starting vCPU {} for VM {}", vcpu_id, self.id);
-        //     vcpu.bind()
-        //         .map_err(|e| anyhow::anyhow!("Failed to bind vCPU {}: {:?}", vcpu_id, e))?;
-        // }
+            vcpu_handles.push(handle);
+        }
 
-        // info!(
-        //     "VM {} ({}) booted successfully with {} vCPUs",
-        //     self.id,
-        //     self.name,
-        //     vcpus.len()
-        // );
+        info!(
+            "VM {} ({}) with {} cpus booted successfully.",
+            self.id,
+            self.name,
+            vcpu_handles.len()
+        );
 
         Ok(())
     }
@@ -523,7 +527,7 @@ enum StateMachine {
 pub struct RunData {
     vcpus: Vec<VCpu>,
     address_space: AddrSpace,
-    regions: Vec<Region>,
+    regions: Vec<GuestRegion>,
     devices: BTreeMap<String, DeviceInfo>,
     kernel_entry: GuestPhysAddr,
     dtb_addr: GuestPhysAddr,
@@ -534,7 +538,7 @@ pub struct RunData {
 
 impl RunData {
     fn add_memory_region(&mut self, config: &MemoryKind) -> anyhow::Result<()> {
-        let region = Region::new(config);
+        let region = GuestRegion::new(config);
         self.address_space
             .map_linear(
                 region.gpa.as_usize().into(),

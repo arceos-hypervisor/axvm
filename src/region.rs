@@ -11,14 +11,14 @@ use crate::{
 const ALIGN: usize = 1024 * 1024 * 2;
 
 #[derive(Debug, Clone)]
-pub struct Region {
+pub struct GuestRegion {
     pub gpa: GuestPhysAddr,
     pub hva: HostVirtAddr,
     pub size: usize,
     pub own: bool,
 }
 
-impl Region {
+impl GuestRegion {
     pub fn new(kind: &MemoryKind) -> Self {
         match kind {
             MemoryKind::Identical { size } => {
@@ -26,7 +26,7 @@ impl Region {
                     alloc::alloc::alloc(Layout::from_size_align_unchecked(*size, ALIGN))
                 } as usize);
                 let gpa = GuestPhysAddr::from_usize(virt_to_phys(hva).as_usize());
-                Region {
+                GuestRegion {
                     gpa,
                     hva,
                     size: *size,
@@ -36,7 +36,7 @@ impl Region {
             MemoryKind::Passthrough { hpa, size } => {
                 let hva = phys_to_virt(*hpa);
                 let gpa = GuestPhysAddr::from_usize(hva.as_usize());
-                Region {
+                GuestRegion {
                     gpa,
                     hva,
                     size: *size,
@@ -47,7 +47,7 @@ impl Region {
                 let hva = HostVirtAddr::from(unsafe {
                     alloc::alloc::alloc(Layout::from_size_align_unchecked(*size, ALIGN))
                 } as usize);
-                Region {
+                GuestRegion {
                     gpa: *gpa,
                     hva,
                     size: *size,
@@ -62,7 +62,7 @@ impl Region {
     }
 }
 
-impl Drop for Region {
+impl Drop for GuestRegion {
     fn drop(&mut self) {
         if self.own {
             unsafe {

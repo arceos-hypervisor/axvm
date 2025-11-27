@@ -14,6 +14,10 @@ pub(super) static HCPU_ALLOC: Mutex<BitAlloc4K> = Mutex::new(BitAlloc4K::DEFAULT
 pub struct HCpuExclusive(CpuId);
 
 impl HCpuExclusive {
+    pub fn id(&self) -> CpuId {
+        self.0
+    }
+
     pub fn try_new(id: Option<CpuId>) -> Option<Self> {
         let mut a = HCPU_ALLOC.lock();
         match id {
