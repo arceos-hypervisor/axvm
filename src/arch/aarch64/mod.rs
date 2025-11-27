@@ -42,6 +42,7 @@ impl ArchHal for Hal {
 
     fn init() -> anyhow::Result<()> {
         arm_vcpu::init_hal(&cpu::VCpuHal);
+     
         Ok(())
     }
 
@@ -60,12 +61,5 @@ impl ArchHal for Hal {
 
     fn cache_flush(vaddr: arm_vcpu::HostVirtAddr, size: usize) {
         dcache_range(CacheOp::CleanAndInvalidate, vaddr.as_usize(), size);
-    }
-}
-
-// Implement Display for VmId
-impl fmt::Display for VmId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "VmId({:?})", self)
     }
 }

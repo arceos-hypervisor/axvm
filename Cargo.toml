@@ -43,10 +43,9 @@ axaddrspace = "0.2"
 # axdevice_base = "0.1"
 # axvcpu = "0.1"
 axvmconfig = {version = "0.1", default-features = false}
-axconfig = {workspace = true}
-axhal.workspace = true
 axruntime.workspace = true
-axtask.workspace = true
+axhal.workspace = true
+axstd.workspace = true
 axvm-types.workspace = true
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]

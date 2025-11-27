@@ -1,4 +1,8 @@
 use alloc::{collections::BTreeMap, vec::Vec};
+use axstd::{
+    os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
+    thread::yield_now,
+};
 use bitmap_allocator::{BitAlloc, BitAlloc4K};
 use core::{
     fmt::Display,
@@ -7,15 +11,13 @@ use core::{
 use spin::Mutex;
 
 use crate::{
+    HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE,
     arch::{HCpu, Hal},
     vhal::{
         cpu::{CpuHardId, CpuId},
         precpu::PreCpuSet,
     },
-    {HostPhysAddr, HostVirtAddr},
 };
-use axconfig::TASK_STACK_SIZE;
-use axtask::AxCpuMask;
 
 pub(crate) mod cpu;
 pub(crate) mod precpu;
@@ -30,42 +32,42 @@ pub fn init() -> anyhow::Result<()> {
 
     info!("Initializing VHal for {cpu_count} CPUs...");
     cpu::PRE_CPU.init();
+
     for cpu_id in 0..cpu_count {
         let id = CpuId::new(cpu_id);
-        let _handle = axtask::spawn_raw(
-            move || {
+        axstd::thread::Builder::new()
+            .name(format!("init-cpu-{}", cpu_id))
+            .stack_size(TASK_STACK_SIZE)
+            .spawn(move || {
                 info!("Core {cpu_id} is initializing hardware virtualization support...");
                 // Initialize cpu affinity here.
                 assert!(
-                    axtask::set_current_affinity(AxCpuMask::one_shot(cpu_id)),
+                    set_current_affinity(AxCpuMask::one_shot(cpu_id)),
                     "Initialize CPU affinity failed!"
                 );
                 info!("Enabling hardware virtualization support on core {id}");
                 timer::init_percpu();
 
-                let cpu_data = Hal::current_cpu_init(id).expect("Enable virtualization failed!");
-                unsafe { cpu::PRE_CPU.set(cpu_data.hard_id(), cpu_data) };
+                // let cpu_data = Hal::current_cpu_init(id).expect("Enable virtualization failed!");
+                // unsafe { cpu::PRE_CPU.set(cpu_data.hard_id(), cpu_data) };
                 let _ = CORES.fetch_add(1, Ordering::Release);
-            },
-            format!("init-cpu-{}", cpu_id),
-            TASK_STACK_SIZE,
-        );
-        // handles.push(_handle);
+            })
+            .map_err(|e| anyhow!("{e:?}"))?;
     }
     info!("Waiting for all cores to enable hardware virtualization...");
 
     // Wait for all cores to enable virtualization.
     while CORES.load(Ordering::Acquire) != cpu_count {
         // Use `yield_now` instead of `core::hint::spin_loop` to avoid deadlock.
-        axtask::yield_now();
+        yield_now();
     }
-    // for handle in handles {
-    //     handle.join();
-    // }
 
     cpu::HCPU_ALLOC.lock().insert(0..cpu_count);
 
     info!("All cores have enabled hardware virtualization support.");
+
+
+
     Ok(())
 }
 

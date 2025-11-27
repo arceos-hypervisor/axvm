@@ -1,9 +1,22 @@
+use core::fmt::{self, Display};
+
+use alloc::string::String;
+use spin::Mutex;
+
+use crate::AxVMConfig;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VmId(usize);
 
 impl VmId {
     pub fn new(id: usize) -> Self {
         VmId(id)
+    }
+}
+// Implement Display for VmId
+impl fmt::Display for VmId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 

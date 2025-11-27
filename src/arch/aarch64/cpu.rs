@@ -6,9 +6,12 @@ use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
 use axhal::percpu::this_cpu_id;
 use axvm_types::addr::*;
 
-use crate::vhal::{
-    ArchCpuData,
-    cpu::{CpuHardId, CpuId, HCpuExclusive},
+use crate::{
+    TASK_STACK_SIZE, VmId,
+    vhal::{
+        ArchCpuData,
+        cpu::{CpuHardId, CpuId, HCpuExclusive},
+    },
 };
 
 pub struct HCpu {
@@ -105,5 +108,15 @@ impl VCpu {
         F: FnOnce(&HCpu) -> R,
     {
         self.hcpu.with_cpu(f)
+    }
+
+    pub fn binded_cpu_id(&self) -> CpuId {
+        self.hcpu.cpu_id()
+    }
+
+    pub fn run(&mut self) -> anyhow::Result<()> {
+        info!("Starting vCPU {}", self.id);
+
+        Ok(())
     }
 }
