@@ -2,7 +2,7 @@ use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity};
 
 use super::AddrSpace;
-use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use arm_vcpu::Aarch64VCpuSetupConfig;
 
 use crate::{
@@ -25,7 +25,7 @@ pub struct VmInit {
     pt_levels: usize,
     stop_requested: AtomicBool,
     exit_code: AtomicUsize,
-    run_data: Option<RunData>,
+    run_data: Option<VmStatusRunning>,
 }
 
 impl VmInit {
@@ -90,7 +90,7 @@ impl VmInit {
         )
         .map_err(|e| anyhow::anyhow!("Failed to create address space: {:?}", e))?;
 
-        let mut run_data = RunData {
+        let mut run_data = VmStatusRunning {
             vcpus,
             address_space,
             regions: Vec::new(),
@@ -100,6 +100,7 @@ impl VmInit {
             dtb_data: Vec::new(),
             ramdisk_data: Vec::new(),
             bios_data: Vec::new(),
+            vcpu_running_count: Arc::new(AtomicUsize::new(0)),
         };
 
         debug!("Mapping memory regions for VM {} ({})", self.id, self.name);
@@ -192,6 +193,8 @@ impl VmInit {
             vcpu.vcpu
                 .set_ept_root(run_data.address_space.page_table_root())
                 .map_err(|e| anyhow::anyhow!("Failed to set EPT root for vCPU : {e:?}"))?;
+
+            run_data.vcpu_running_count.fetch_add(1, Ordering::SeqCst);
         }
 
         self.run_data = Some(run_data);
@@ -219,8 +222,10 @@ impl VmStatusInitOps for VmInit {
         vcpus.append(&mut data.vcpus);
         let mut vcpu_handles = vec![];
         let vm_id = self.id;
+
         for mut vcpu in vcpus.into_iter() {
             let vcpu_id = vcpu.id;
+            let vcpu_running_count = data.vcpu_running_count.clone();
             let bind_id = vcpu.binded_cpu_id();
             let handle = std::thread::Builder::new()
                 .name(format!("{vm_id}-{vcpu_id}"))
@@ -241,6 +246,7 @@ impl VmStatusInitOps for VmInit {
                             );
                         }
                     }
+                    vcpu_running_count.fetch_sub(1, Ordering::SeqCst);
                     vcpu
                 })
                 .unwrap();
@@ -254,14 +260,10 @@ impl VmStatusInitOps for VmInit {
             self.name,
             vcpu_handles.len()
         );
-
-        Ok(VmStatusRunning { data })
+        Ok(data)
     }
 }
 
-pub struct VmStatusRunning {
-    data: RunData,
-}
 impl VmStatusRunningOps for VmStatusRunning {
     type Stopping = VmStatusStopping;
 
@@ -273,9 +275,11 @@ impl VmStatusRunningOps for VmStatusRunning {
     }
 
     fn do_work(&mut self) -> Result<(), RunError> {
-
-        // Ok(())
-        Err(RunError::Exit)
+        if self.vcpu_running_count.load(Ordering::SeqCst) == 0 {
+            Err(RunError::Exit)
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -284,7 +288,7 @@ pub struct VmStatusStopping {}
 impl VmStatusStoppingOps for VmStatusStopping {}
 
 /// Data needed when VM is running
-pub struct RunData {
+pub struct VmStatusRunning {
     vcpus: Vec<VCpu>,
     address_space: AddrSpace,
     regions: Vec<GuestRegion>,
@@ -294,9 +298,10 @@ pub struct RunData {
     dtb_data: Vec<u32>,
     ramdisk_data: Vec<u8>,
     bios_data: Vec<u8>,
+    vcpu_running_count: Arc<AtomicUsize>,
 }
 
-impl RunData {
+impl VmStatusRunning {
     fn add_memory_region(&mut self, config: &MemoryKind) -> anyhow::Result<()> {
         let region = GuestRegion::new(config);
         self.address_space

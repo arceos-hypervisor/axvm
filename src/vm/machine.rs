@@ -159,9 +159,7 @@ impl VmMachineState {
     fn do_work(&mut self) -> Result<(), RunError> {
         match self {
             VmMachineState::Running(running_vm) => running_vm.do_work()?,
-            _ => {
-                std::thread::sleep(Duration::from_millis(STATE_POLL_INTERVAL_MS));
-            }
+            _ => {}
         }
         Ok(())
     }
@@ -213,6 +211,7 @@ impl VmMachine {
     fn run_loop(&mut self) -> Result<(), RunError> {
         while self.is_active() {
             self.run_loop_once()?;
+            thread::yield_now();
         }
         Ok(())
     }
@@ -271,106 +270,6 @@ impl VmMachine {
 
         Ok(())
     }
-
-    // pub(crate) fn start(&self) -> anyhow::Result<()> {}
-
-    // fn worker_loop(
-    //     mut vm: V,
-    //     state: Arc<AtomicState>,
-    //     commands: Arc<CommandMailbox>,
-    //     worker_alive: Arc<AtomicBool>,
-    // ) {
-    //     let mut tracked_state = VMStatus::Loaded;
-    //     state.store(tracked_state);
-    //     let poll_interval = Duration::from_millis(STATE_POLL_INTERVAL_MS);
-
-    //     loop {
-    //         if let Some(cmd) = commands.pop() {
-    //             match cmd {
-    //                 MachineCommand::Start { responder } => {
-    //                     let result = Self::handle_start(&mut vm, &state, &mut tracked_state);
-    //                     responder.complete(result);
-    //                     Self::sync_state(&vm, &state, &mut tracked_state);
-    //                 }
-    //                 MachineCommand::Shutdown { responder } => {
-    //                     let result = Self::handle_shutdown(&mut vm, &state, &mut tracked_state);
-    //                     responder.complete(result);
-    //                     Self::sync_state(&vm, &state, &mut tracked_state);
-    //                 }
-    //                 MachineCommand::Exit => {
-    //                     if matches!(tracked_state, VMStatus::Running | VMStatus::Stopping) {
-    //                         vm.stop();
-    //                     }
-    //                     break;
-    //                 }
-    //             }
-    //         } else {
-    //             Self::sync_state(&vm, &state, &mut tracked_state);
-    //             thread::sleep(poll_interval);
-    //         }
-    //     }
-
-    //     worker_alive.store(false, Ordering::Release);
-    //     state.store(VMStatus::Stopped);
-    // }
-
-    // fn handle_start(
-    //     vm: &mut V,
-    //     state: &Arc<AtomicState>,
-    //     tracked_state: &mut VMStatus,
-    // ) -> anyhow::Result<()> {
-    //     match tracked_state {
-    //         VMStatus::Loading => Err(anyhow::anyhow!("VM is still loading")),
-    //         VMStatus::Running => Err(anyhow::anyhow!("VM is already running")),
-    //         VMStatus::Stopping => Err(anyhow::anyhow!("VM is stopping")),
-    //         _ => {
-    //             *tracked_state = VMStatus::Running;
-    //             state.store(*tracked_state);
-    //             if let Err(e) = vm.run() {
-    //                 *tracked_state = VMStatus::Stopped;
-    //                 state.store(*tracked_state);
-    //                 Err(e)
-    //             } else {
-    //                 Ok(())
-    //             }
-    //         }
-    //     }
-    // }
-
-    // fn handle_shutdown(
-    //     vm: &mut V,
-    //     state: &Arc<AtomicState>,
-    //     tracked_state: &mut VMStatus,
-    // ) -> anyhow::Result<()> {
-    //     match tracked_state {
-    //         VMStatus::Loading => Err(anyhow::anyhow!("VM is still loading")),
-    //         VMStatus::Stopped => Ok(()),
-    //         _ => {
-    //             *tracked_state = VMStatus::Stopping;
-    //             state.store(*tracked_state);
-    //             vm.stop();
-
-    //             loop {
-    //                 match vm.status() {
-    //                     Status::PoweredOff | Status::Idle => break,
-    //                     _ => thread::yield_now(),
-    //                 }
-    //             }
-
-    //             *tracked_state = VMStatus::Stopped;
-    //             state.store(*tracked_state);
-    //             Ok(())
-    //         }
-    //     }
-    // }
-
-    // fn sync_state(vm: &V, state: &Arc<AtomicState>, tracked_state: &mut VMStatus) {
-    //     let hardware_state = VMStatus::from(vm.status());
-    //     if *tracked_state != hardware_state {
-    //         *tracked_state = hardware_state;
-    //         state.store(hardware_state);
-    //     }
-    // }
 }
 
 /// Auxiliary wrapper that stores the current machine status in an atomically
