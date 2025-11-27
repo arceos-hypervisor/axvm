@@ -1,4 +1,5 @@
-use core::fmt::Display;
+use core::{fmt::Display, sync::atomic::AtomicBool};
+use std::sync::Arc;
 
 use aarch64_cpu::registers::*;
 use alloc::sync::Weak;
@@ -78,10 +79,33 @@ impl arm_vcpu::CpuHal for VCpuHal {
     }
 }
 
+#[derive(Clone)]
+pub struct VCpuHandle {
+    is_active: Arc<AtomicBool>,
+}
+
+impl VCpuHandle {
+    pub fn new() -> Self {
+        VCpuHandle {
+            is_active: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    pub fn stop(&self) {
+        self.is_active
+            .store(false, core::sync::atomic::Ordering::Release);
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.is_active.load(core::sync::atomic::Ordering::Acquire)
+    }
+}
+
 pub struct VCpu {
     pub id: CpuHardId,
     pub vcpu: arm_vcpu::Aarch64VCpu,
     hcpu: HCpuExclusive,
+    handle: VCpuHandle,
 }
 
 impl VCpu {
@@ -100,7 +124,12 @@ impl VCpu {
             id: hard_id,
             vcpu,
             hcpu: hcpu_exclusive,
+            handle: VCpuHandle::new(),
         })
+    }
+
+    pub fn handle(&self) -> VCpuHandle {
+        self.handle.clone()
     }
 
     pub fn with_hcpu<F, R>(&self, f: F) -> R
@@ -116,6 +145,11 @@ impl VCpu {
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         info!("Starting vCPU {}", self.id);
+
+        while self.handle.is_active() {
+            let exit_reason = self.vcpu.run().map_err(|e| anyhow!("{e}"))?;
+            debug!("vCPU {} exited with reason: {:?}", self.id, exit_reason);
+        }
 
         Ok(())
     }
