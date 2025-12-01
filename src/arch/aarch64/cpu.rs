@@ -2,17 +2,12 @@ use core::{fmt::Display, sync::atomic::AtomicBool};
 use std::sync::Arc;
 
 use aarch64_cpu::registers::*;
-use alloc::sync::Weak;
 use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
-use axhal::percpu::this_cpu_id;
 use axvm_types::addr::*;
 
-use crate::{
-    TASK_STACK_SIZE, VmId,
-    vhal::{
-        ArchCpuData,
-        cpu::{CpuHardId, CpuId, HCpuExclusive},
-    },
+use crate::vhal::{
+    ArchCpuData,
+    cpu::{CpuHardId, CpuId, HCpuExclusive},
 };
 
 pub struct HCpu {

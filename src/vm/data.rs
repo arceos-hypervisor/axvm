@@ -147,6 +147,19 @@ impl VmData {
         let s = self.shared.lock();
         s.kernel_entry
     }
+
+    pub fn memories(&self) -> Vec<(GuestPhysAddr, usize)> {
+        let s = self.shared.lock();
+        s.memories.iter().map(|m| (m.gpa(), m.size())).collect()
+    }
+
+    pub fn reserved_memories(&self) -> Vec<(GuestPhysAddr, usize)> {
+        let s = self.shared.lock();
+        s.reserved_memories
+            .iter()
+            .map(|m| (m.gpa(), m.size()))
+            .collect()
+    }
 }
 
 #[derive(Default)]
@@ -166,9 +179,9 @@ pub struct GuestMemory {
 }
 
 impl GuestMemory {
-    pub fn copy_from_slice(&self, offset: usize, data: &[u8]) {
+    pub fn copy_from_slice(&mut self, offset: usize, data: &[u8]) {
         assert!(data.len() <= self.size - offset);
-        let mut g = self.owner.addrspace.lock();
+        let g = self.owner.addrspace.lock();
         let hva = g
             .translated_byte_buffer(self.gpa.as_usize().into(), self.size)
             .expect("Failed to translate kernel image load address");
@@ -203,7 +216,7 @@ impl GuestMemory {
 
     pub fn to_vec(&self) -> Vec<u8> {
         let mut result = vec![];
-        let mut g = self.owner.addrspace.lock();
+        let g = self.owner.addrspace.lock();
         let hva = g
             .translated_byte_buffer(self.gpa.as_usize().into(), self.size)
             .expect("Failed to translate memory region");

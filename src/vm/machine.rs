@@ -3,15 +3,9 @@ use alloc::{
     string::{String, ToString},
     sync::Arc,
 };
-use core::{
-    marker::PhantomData,
-    sync::atomic::{AtomicBool, AtomicU8, Ordering},
-};
+use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use spin::Mutex;
-use std::{
-    thread::{self, JoinHandle},
-    time::Duration,
-};
+use std::thread::{self};
 
 use crate::{
     RunError, Status, VmId, VmStatusInitOps, VmStatusRunningOps,

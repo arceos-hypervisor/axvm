@@ -1,21 +1,15 @@
+use alloc::{string::String, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::os::arceos::{
-    api::{config, task::AxCpuMask},
-    modules::axtask::set_current_affinity,
-};
+use std::os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity};
 
-use super::AddrSpace;
-use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use arm_vcpu::Aarch64VCpuSetupConfig;
 
 use crate::{
-    GuestPhysAddr, HostPhysAddr, HostVirtAddr, RunError, TASK_STACK_SIZE, VmData, VmStatusInitOps,
-    VmStatusRunningOps, VmStatusStoppingOps,
+    GuestPhysAddr, RunError, TASK_STACK_SIZE, VmData, VmStatusInitOps, VmStatusRunningOps,
+    VmStatusStoppingOps,
     arch::cpu::VCpu,
     config::{AxVMConfig, MemoryKind},
-    fdt::fdt,
-    vhal::{ArchHal, cpu::CpuId, phys_to_virt, virt_to_phys},
-    vm::{MappingFlags, Status, VmId},
+    vm::{MappingFlags, VmId},
 };
 
 const VM_ASPACE_BASE: usize = 0x0;
@@ -56,7 +50,7 @@ impl VmInit {
 
         match config.cpu_num {
             crate::config::CpuNumType::Alloc(num) => {
-                for i in 0..num {
+                for _ in 0..num {
                     let vcpu = VCpu::new(None, dtb_addr)?;
                     debug!("Created vCPU with {:?}", vcpu.id);
                     vcpus.push(vcpu);
@@ -281,8 +275,13 @@ impl VmStatusRunning {
                 config.id(),
                 config.name()
             );
-            let fdt = fdt().unwrap();
-            let dtb_bytes = fdt.as_slice();
+            let fdt = crate::fdt::FdtGen {
+                cpu_hard_ids: self.vcpus.iter().map(|vcpu| vcpu.id).collect(),
+                memories: self.data.memories(),
+            };
+
+            let dtb_bytes = fdt.generate(&config)?;
+
             let mut guest_mem = self.data.new_memory(
                 &MemoryKind::Identical {
                     size: dtb_bytes.len(),
@@ -290,93 +289,12 @@ impl VmStatusRunning {
                 flags,
             );
             self.dtb_addr = guest_mem.gpa();
-            guest_mem.copy_from_slice(0, dtb_bytes);
+            guest_mem.copy_from_slice(0, &dtb_bytes);
             self.data.add_reserved_memory(guest_mem);
         }
 
         Ok(())
     }
-
-    // fn load_dtb_image(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
-    //     let image_cfg = config.image_config();
-
-    //     if let Some(dtb_cfg) = &image_cfg.dtb {
-    //         let size = dtb_cfg.data.len();
-    //         self.dtb_data = Vec::with_capacity(size / 4);
-
-    //         let gpa = if let Some(gpa) = dtb_cfg.gpa {
-    //             gpa
-    //         } else {
-    //             (self.dtb_data.as_mut_ptr() as usize).into()
-    //         };
-    //         self.address_space
-    //             .map_linear(
-    //                 gpa.as_usize().into(),
-    //                 virt_to_phys(HostVirtAddr::from(self.dtb_data.as_mut_ptr() as usize))
-    //                     .as_usize()
-    //                     .into(),
-    //                 size,
-    //                 axaddrspace::MappingFlags::READ | axaddrspace::MappingFlags::USER,
-    //             )
-    //             .map_err(|e| anyhow::anyhow!("Failed to map DTB region: {:?}", e))?;
-
-    //         debug!(
-    //             "Loading DTB image into GPA @{:#x} for VM {} ({})",
-    //             gpa.as_usize(),
-    //             config.id(),
-    //             config.name()
-    //         );
-    //         self.dtb_addr = gpa;
-    //         self.load_image_data(gpa, &dtb_cfg.data)?;
-    //     } else {
-    //         debug!(
-    //             "No dtb provided, generating new dtb for {} ({})",
-    //             config.id(),
-    //             config.name()
-    //         );
-    //         let fdt = fdt().unwrap();
-    //         let dtb_bytes = fdt.as_slice();
-    //         let data = dtb_bytes
-    //             .chunks_exact(4)
-    //             .map(|chunk| u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-    //             .collect::<Vec<u32>>();
-    //         let size = dtb_bytes.len();
-    //         self.dtb_data = data;
-    //         let gpa = self.dtb_data.as_mut_ptr() as usize;
-    //         self.address_space
-    //             .map_linear(
-    //                 gpa.into(),
-    //                 virt_to_phys(HostVirtAddr::from(self.dtb_data.as_mut_ptr() as usize))
-    //                     .as_usize()
-    //                     .into(),
-    //                 size,
-    //                 axaddrspace::MappingFlags::READ | axaddrspace::MappingFlags::USER,
-    //             )
-    //             .map_err(|e| anyhow::anyhow!("Failed to map DTB region: {e:?}"))?;
-    //     }
-
-    //     Ok(())
-    // }
-
-    // fn load_image_data(&mut self, gpa: GuestPhysAddr, data: &[u8]) -> anyhow::Result<()> {
-    //     let hva = self
-    //         .address_space
-    //         .translated_byte_buffer(gpa.as_usize().into(), data.len())
-    //         .ok_or(anyhow!("Fail to load [{gpa:?}, {:?})", gpa + data.len()))?;
-    //     let mut remain = data;
-
-    //     for buff in hva {
-    //         let copy_size = core::cmp::min(remain.len(), buff.len());
-    //         buff[..copy_size].copy_from_slice(&remain[..copy_size]);
-    //         crate::arch::Hal::cache_flush(HostVirtAddr::from(buff.as_ptr() as usize), copy_size);
-    //         remain = &remain[copy_size..];
-    //         if remain.is_empty() {
-    //             break;
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
 }
 
 /// Information about a device in the VM
