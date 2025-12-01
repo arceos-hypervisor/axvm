@@ -37,6 +37,7 @@ page_table_multiarch = "0.5"
 percpu = {version = "0.2", features = ["arm-el2"]}
 vm-allocator.workspace = true
 bitmap-allocator = "0.2.1"
+vm-fdt.workspace = true
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axaddrspace = "0.2"

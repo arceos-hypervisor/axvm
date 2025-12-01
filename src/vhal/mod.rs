@@ -1,22 +1,16 @@
-use alloc::{collections::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 use axstd::{
     os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
     thread::yield_now,
 };
-use bitmap_allocator::{BitAlloc, BitAlloc4K};
-use core::{
-    fmt::Display,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use bitmap_allocator::BitAlloc;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use spin::Mutex;
 
 use crate::{
     HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE,
     arch::{HCpu, Hal},
-    vhal::{
-        cpu::{CpuHardId, CpuId},
-        precpu::PreCpuSet,
-    },
+    vhal::cpu::{CpuHardId, CpuId},
 };
 
 pub(crate) mod cpu;

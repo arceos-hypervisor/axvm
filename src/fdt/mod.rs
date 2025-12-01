@@ -1,6 +1,10 @@
 use alloc::vec::Vec;
 use fdt_parser::{Fdt, Status};
 
+mod r#gen;
+
+pub use r#gen::FdtGen;
+
 pub(crate) fn fdt() -> Option<Fdt> {
     let addr = axhal::get_bootarg();
     if addr == 0 {

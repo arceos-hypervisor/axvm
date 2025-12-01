@@ -1,24 +1,14 @@
 use aarch64_cpu::registers::MPIDR_EL1;
 use aarch64_cpu_ext::cache::{CacheOp, dcache_range};
-use axhal::percpu::this_cpu_id;
-use core::fmt;
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use memory_addr::VirtAddr;
 
-use crate::alloc::{collections::BTreeMap, string::String, vec::Vec};
-use crate::arch::cpu::VCpu;
+use crate::alloc::vec::Vec;
 use crate::fdt;
 use crate::vhal::{
     ArchHal,
     cpu::{CpuHardId, CpuId},
 };
 
-use aarch64_cpu::registers::{ReadWriteable, Readable, Writeable};
-use axaddrspace::{AxMmHal, MappingFlags};
-use axerrno::{AxResult, ax_err};
-use page_table_multiarch::PagingHandler;
-
-use crate::{config::AxVMConfig, vm::*};
+use aarch64_cpu::registers::Readable;
 
 pub mod cpu;
 mod vm;
