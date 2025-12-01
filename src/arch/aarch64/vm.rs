@@ -1,5 +1,8 @@
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity};
+use std::os::arceos::{
+    api::{config, task::AxCpuMask},
+    modules::axtask::set_current_affinity,
+};
 
 use super::AddrSpace;
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
@@ -12,7 +15,7 @@ use crate::{
     config::{AxVMConfig, MemoryKind},
     fdt::fdt,
     vhal::{ArchHal, cpu::CpuId, phys_to_virt, virt_to_phys},
-    vm::{Status, VmId},
+    vm::{MappingFlags, Status, VmId},
 };
 
 const VM_ASPACE_BASE: usize = 0x0;
@@ -86,9 +89,6 @@ impl VmInit {
             vcpus,
             data: VmData::new(self.pt_levels)?,
             dtb_addr: GuestPhysAddr::from_usize(0),
-            dtb_data: Vec::new(),
-            ramdisk_data: Vec::new(),
-            bios_data: Vec::new(),
             vcpu_running_count: Arc::new(AtomicUsize::new(0)),
         };
 
@@ -231,9 +231,6 @@ pub struct VmStatusRunning {
     vcpus: Vec<VCpu>,
     data: VmData,
     dtb_addr: GuestPhysAddr,
-    dtb_data: Vec<u32>,
-    ramdisk_data: Vec<u8>,
-    bios_data: Vec<u8>,
     vcpu_running_count: Arc<AtomicUsize>,
 }
 
@@ -251,7 +248,51 @@ impl VmStatusRunning {
     // }
 
     fn make_dtb(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
-        // self.load_dtb_image(config)?;
+        let flags =
+            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::WRITE | MappingFlags::USER;
+
+        if let Some(dtb_cfg) = &config.image_config().dtb {
+            debug!(
+                "Loading DTB image into GPA @{:#x} for VM {} ({})",
+                dtb_cfg.gpa.unwrap_or(0.into()).as_usize(),
+                config.id(),
+                config.name()
+            );
+            let kind = if let Some(gpa) = dtb_cfg.gpa {
+                MemoryKind::Vmem {
+                    gpa: gpa.into(),
+                    size: dtb_cfg.data.len(),
+                }
+            } else {
+                MemoryKind::Identical {
+                    size: dtb_cfg.data.len(),
+                }
+            };
+
+            let mut guest_mem = self.data.new_memory(&kind, flags);
+
+            self.dtb_addr = guest_mem.gpa();
+
+            guest_mem.copy_from_slice(0, &dtb_cfg.data);
+            self.data.add_reserved_memory(guest_mem);
+        } else {
+            debug!(
+                "No dtb provided, generating new dtb for {} ({})",
+                config.id(),
+                config.name()
+            );
+            let fdt = fdt().unwrap();
+            let dtb_bytes = fdt.as_slice();
+            let mut guest_mem = self.data.new_memory(
+                &MemoryKind::Identical {
+                    size: dtb_bytes.len(),
+                },
+                flags,
+            );
+            self.dtb_addr = guest_mem.gpa();
+            guest_mem.copy_from_slice(0, dtb_bytes);
+            self.data.add_reserved_memory(guest_mem);
+        }
 
         Ok(())
     }

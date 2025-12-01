@@ -149,6 +149,36 @@ impl VCpu {
         while self.handle.is_active() {
             let exit_reason = self.vcpu.run().map_err(|e| anyhow!("{e}"))?;
             debug!("vCPU {} exited with reason: {:?}", self.id, exit_reason);
+            match exit_reason {
+                arm_vcpu::AxVCpuExitReason::Hypercall { nr, args } => todo!(),
+                arm_vcpu::AxVCpuExitReason::MmioRead {
+                    addr,
+                    width,
+                    reg,
+                    reg_width,
+                    signed_ext,
+                } => todo!(),
+                arm_vcpu::AxVCpuExitReason::MmioWrite { addr, width, data } => todo!(),
+                arm_vcpu::AxVCpuExitReason::SysRegRead { addr, reg } => todo!(),
+                arm_vcpu::AxVCpuExitReason::SysRegWrite { addr, value } => todo!(),
+                arm_vcpu::AxVCpuExitReason::ExternalInterrupt => todo!(),
+                arm_vcpu::AxVCpuExitReason::CpuUp {
+                    target_cpu,
+                    entry_point,
+                    arg,
+                } => todo!(),
+                arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
+                arm_vcpu::AxVCpuExitReason::SystemDown => todo!(),
+                arm_vcpu::AxVCpuExitReason::Nothing => todo!(),
+                arm_vcpu::AxVCpuExitReason::SendIPI {
+                    target_cpu,
+                    target_cpu_aux,
+                    send_to_all,
+                    send_to_self,
+                    vector,
+                } => todo!(),
+                _ => todo!(),
+            }
         }
 
         Ok(())
