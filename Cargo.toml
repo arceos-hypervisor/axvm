@@ -14,7 +14,7 @@ cfg-if = "1.0"
 spin = "0.9"
 
 # System independent crates provided by ArceOS.
-axerrno = "0.1.0"
+axerrno = "0.2"
 cpumask = "0.1.0"
 # kspin = "0.1.0"
 memory_addr = "0.4"
