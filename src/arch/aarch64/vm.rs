@@ -6,12 +6,11 @@ use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
 use arm_vcpu::Aarch64VCpuSetupConfig;
 
 use crate::{
-    GuestPhysAddr, HostPhysAddr, HostVirtAddr, RunError, TASK_STACK_SIZE, VmStatusInitOps,
+    GuestPhysAddr, HostPhysAddr, HostVirtAddr, RunError, TASK_STACK_SIZE, VmData, VmStatusInitOps,
     VmStatusRunningOps, VmStatusStoppingOps,
     arch::cpu::VCpu,
     config::{AxVMConfig, MemoryKind},
     fdt::fdt,
-    region::GuestRegion,
     vhal::{ArchHal, cpu::CpuId, phys_to_virt, virt_to_phys},
     vm::{Status, VmId},
 };
@@ -83,20 +82,9 @@ impl VmInit {
             self.id, self.name, vcpu_count, self.pt_levels
         );
 
-        // Create address space for the VM
-        let address_space = AddrSpace::new_empty(
-            self.pt_levels,
-            axaddrspace::GuestPhysAddr::from(VM_ASPACE_BASE),
-            VM_ASPACE_SIZE,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to create address space: {:?}", e))?;
-
         let mut run_data = VmStatusRunning {
             vcpus,
-            address_space,
-            regions: Vec::new(),
-            devices: BTreeMap::new(),
-            kernel_entry: GuestPhysAddr::from_usize(0),
+            data: VmData::new(self.pt_levels)?,
             dtb_addr: GuestPhysAddr::from_usize(0),
             dtb_data: Vec::new(),
             ramdisk_data: Vec::new(),
@@ -106,77 +94,27 @@ impl VmInit {
 
         debug!("Mapping memory regions for VM {} ({})", self.id, self.name);
         for memory_cfg in &config.memory_regions {
-            run_data.add_memory_region(memory_cfg)?;
+            use crate::vm::MappingFlags;
+            let m = run_data.data.new_memory(
+                memory_cfg,
+                MappingFlags::READ
+                    | MappingFlags::WRITE
+                    | MappingFlags::EXECUTE
+                    | MappingFlags::USER,
+            );
+            run_data.data.add_memory(m);
         }
 
-        debug!(
-            "Mapped {} memory regions for VM {} ({})",
-            run_data.regions.len(),
-            self.id,
-            self.name
-        );
+        run_data.data.load_kernel_image(&config)?;
 
-        run_data.load_images(&config)?;
+        run_data.make_dtb(&config)?;
 
-        // Add emulated devices
-        // for emu_device in config.emu_devices() {
-        //     let device_info = DeviceInfo {
-        //         device_type: DeviceType::Emulated,
-        //         gpa: GuestPhysAddr::from(emu_device.base_gpa),
-        //         hpa: None,
-        //         size: emu_device.length,
-        //         config: DeviceConfig::Mmio {
-        //             flags: MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
-        //         },
-        //     };
-
-        //     devices.insert(emu_device.name.clone(), device_info);
-
-        //     // Map device memory
-        //     self.map_region(
-        //         GuestPhysAddr::from(emu_device.base_gpa),
-        //         HostPhysAddr::from(emu_device.base_gpa), // Use identity mapping for emulated devices
-        //         emu_device.length,
-        //         MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
-        //     )
-        //     .map_err(|e| {
-        //         anyhow::anyhow!("Failed to map emulated device {}: {:?}", emu_device.name, e)
-        //     })?;
-        // }
-
-        // // Add passthrough devices
-        // for pt_device in config.pass_through_devices() {
-        //     let device_info = DeviceInfo {
-        //         device_type: DeviceType::Passthrough,
-        //         gpa: GuestPhysAddr::from(pt_device.base_gpa),
-        //         hpa: Some(HostPhysAddr::from(pt_device.base_hpa)),
-        //         size: pt_device.length,
-        //         config: DeviceConfig::Mmio {
-        //             flags: MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
-        //         },
-        //     };
-
-        //     devices.insert(pt_device.name.clone(), device_info);
-
-        //     // Map device memory
-        //     self.map_region(
-        //         GuestPhysAddr::from(pt_device.base_gpa),
-        //         HostPhysAddr::from(pt_device.base_hpa),
-        //         pt_device.length,
-        //         MappingFlags::DEVICE | MappingFlags::READ | MappingFlags::WRITE,
-        //     )
-        //     .map_err(|e| {
-        //         anyhow::anyhow!(
-        //             "Failed to map passthrough device {}: {:?}",
-        //             pt_device.name,
-        //             e
-        //         )
-        //     })?;
-        // }
+        let kernel_entry = run_data.data.kernel_entry();
+        let gpt_root = run_data.data.gpt_root();
 
         // Setup vCPUs
         for vcpu in &mut run_data.vcpus {
-            vcpu.vcpu.set_entry(run_data.kernel_entry).unwrap();
+            vcpu.vcpu.set_entry(kernel_entry).unwrap();
             vcpu.vcpu.set_dtb_addr(run_data.dtb_addr).unwrap();
 
             let setup_config = Aarch64VCpuSetupConfig {
@@ -192,7 +130,7 @@ impl VmInit {
 
             // Set EPT root
             vcpu.vcpu
-                .set_ept_root(run_data.address_space.page_table_root())
+                .set_ept_root(gpt_root)
                 .map_err(|e| anyhow::anyhow!("Failed to set EPT root for vCPU : {e:?}"))?;
 
             run_data.vcpu_running_count.fetch_add(1, Ordering::SeqCst);
@@ -291,10 +229,7 @@ impl VmStatusStoppingOps for VmStatusStopping {}
 /// Data needed when VM is running
 pub struct VmStatusRunning {
     vcpus: Vec<VCpu>,
-    address_space: AddrSpace,
-    regions: Vec<GuestRegion>,
-    devices: BTreeMap<String, DeviceInfo>,
-    kernel_entry: GuestPhysAddr,
+    data: VmData,
     dtb_addr: GuestPhysAddr,
     dtb_data: Vec<u32>,
     ramdisk_data: Vec<u8>,
@@ -303,147 +238,104 @@ pub struct VmStatusRunning {
 }
 
 impl VmStatusRunning {
-    fn add_memory_region(&mut self, config: &MemoryKind) -> anyhow::Result<()> {
-        let region = GuestRegion::new(config);
-        self.address_space
-            .map_linear(
-                region.gpa.as_usize().into(),
-                region.hva.as_usize().into(),
-                region.size,
-                axaddrspace::MappingFlags::READ
-                    | axaddrspace::MappingFlags::WRITE
-                    | axaddrspace::MappingFlags::EXECUTE
-                    | axaddrspace::MappingFlags::USER,
-            )
-            .map_err(|e| anyhow::anyhow!("Failed to map memory region: {:?}", e))?;
+    // fn load_images(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
+    //     // Load other images (BIOS, DTB, Ramdisk) similarly...
+    //     debug!(
+    //         "Loading kernel image for VM {} ({})",
+    //         config.id(),
+    //         config.name()
+    //     );
+    //     let _main_region_idx = self.load_kernel_image(config)?;
 
-        self.regions.push(region);
+    //     Ok(())
+    // }
 
-        Ok(())
-    }
-
-    fn load_images(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
-        // Load other images (BIOS, DTB, Ramdisk) similarly...
-        debug!(
-            "Loading kernel image for VM {} ({})",
-            config.id(),
-            config.name()
-        );
-        let _main_region_idx = self.load_kernel_image(config)?;
-        self.load_dtb_image(config)?;
+    fn make_dtb(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
+        // self.load_dtb_image(config)?;
 
         Ok(())
     }
 
-    /// Returns the loaded kernel region's index
-    fn load_kernel_image(&mut self, config: &AxVMConfig) -> anyhow::Result<usize> {
-        let mut idx = 0;
-        let image_cfg = config.image_config();
-        let gpa = if let Some(gpa) = image_cfg.kernel.gpa {
-            let mut found = false;
-            for (i, region) in self.regions.iter().enumerate() {
-                if (region.gpa..region.gpa + region.size).contains(&gpa) {
-                    idx = i;
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                return Err(anyhow!(
-                    "Kernel load GPA {:#x} not within any memory region",
-                    gpa.as_usize()
-                ));
-            }
-            gpa
-        } else {
-            let mut gpa = None;
-            for (i, region) in self.regions.iter().enumerate() {
-                if region.size >= image_cfg.kernel.data.len() {
-                    gpa = Some(region.gpa + 2 * 1024 * 1024);
-                    idx = i;
-                    break;
-                } else {
-                    continue;
-                }
-            }
-            gpa.ok_or(anyhow!("No suitable memory region found for kernel image"))?
-        };
+    // fn load_dtb_image(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
+    //     let image_cfg = config.image_config();
 
-        debug!(
-            "Loading kernel image into GPA @{:#x} for VM {} ({})",
-            gpa.as_usize(),
-            config.id(),
-            config.name()
-        );
-        self.load_image_data(gpa, &image_cfg.kernel.data)?;
-        self.kernel_entry = gpa;
+    //     if let Some(dtb_cfg) = &image_cfg.dtb {
+    //         let size = dtb_cfg.data.len();
+    //         self.dtb_data = Vec::with_capacity(size / 4);
 
-        Ok(idx)
-    }
+    //         let gpa = if let Some(gpa) = dtb_cfg.gpa {
+    //             gpa
+    //         } else {
+    //             (self.dtb_data.as_mut_ptr() as usize).into()
+    //         };
+    //         self.address_space
+    //             .map_linear(
+    //                 gpa.as_usize().into(),
+    //                 virt_to_phys(HostVirtAddr::from(self.dtb_data.as_mut_ptr() as usize))
+    //                     .as_usize()
+    //                     .into(),
+    //                 size,
+    //                 axaddrspace::MappingFlags::READ | axaddrspace::MappingFlags::USER,
+    //             )
+    //             .map_err(|e| anyhow::anyhow!("Failed to map DTB region: {:?}", e))?;
 
-    fn load_dtb_image(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
-        let image_cfg = config.image_config();
+    //         debug!(
+    //             "Loading DTB image into GPA @{:#x} for VM {} ({})",
+    //             gpa.as_usize(),
+    //             config.id(),
+    //             config.name()
+    //         );
+    //         self.dtb_addr = gpa;
+    //         self.load_image_data(gpa, &dtb_cfg.data)?;
+    //     } else {
+    //         debug!(
+    //             "No dtb provided, generating new dtb for {} ({})",
+    //             config.id(),
+    //             config.name()
+    //         );
+    //         let fdt = fdt().unwrap();
+    //         let dtb_bytes = fdt.as_slice();
+    //         let data = dtb_bytes
+    //             .chunks_exact(4)
+    //             .map(|chunk| u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+    //             .collect::<Vec<u32>>();
+    //         let size = dtb_bytes.len();
+    //         self.dtb_data = data;
+    //         let gpa = self.dtb_data.as_mut_ptr() as usize;
+    //         self.address_space
+    //             .map_linear(
+    //                 gpa.into(),
+    //                 virt_to_phys(HostVirtAddr::from(self.dtb_data.as_mut_ptr() as usize))
+    //                     .as_usize()
+    //                     .into(),
+    //                 size,
+    //                 axaddrspace::MappingFlags::READ | axaddrspace::MappingFlags::USER,
+    //             )
+    //             .map_err(|e| anyhow::anyhow!("Failed to map DTB region: {e:?}"))?;
+    //     }
 
-        if let Some(dtb_cfg) = &image_cfg.dtb {
-            let size = dtb_cfg.data.len();
-            self.dtb_data = Vec::with_capacity(size / 4);
+    //     Ok(())
+    // }
 
-            let gpa = if let Some(gpa) = dtb_cfg.gpa {
-                gpa
-            } else {
-                (self.dtb_data.as_mut_ptr() as usize).into()
-            };
-            self.address_space
-                .map_linear(
-                    gpa.as_usize().into(),
-                    virt_to_phys(HostVirtAddr::from(self.dtb_data.as_mut_ptr() as usize))
-                        .as_usize()
-                        .into(),
-                    size,
-                    axaddrspace::MappingFlags::READ | axaddrspace::MappingFlags::USER,
-                )
-                .map_err(|e| anyhow::anyhow!("Failed to map DTB region: {:?}", e))?;
+    // fn load_image_data(&mut self, gpa: GuestPhysAddr, data: &[u8]) -> anyhow::Result<()> {
+    //     let hva = self
+    //         .address_space
+    //         .translated_byte_buffer(gpa.as_usize().into(), data.len())
+    //         .ok_or(anyhow!("Fail to load [{gpa:?}, {:?})", gpa + data.len()))?;
+    //     let mut remain = data;
 
-            debug!(
-                "Loading DTB image into GPA @{:#x} for VM {} ({})",
-                gpa.as_usize(),
-                config.id(),
-                config.name()
-            );
-            self.dtb_addr = gpa;
-            self.load_image_data(gpa, &dtb_cfg.data)?;
-        } else {
-            debug!(
-                "No dtb provided, generating new dtb for {} ({})",
-                config.id(),
-                config.name()
-            );
-            let fdt = fdt().unwrap();
-            let dtb_bytes = fdt.as_slice();
-        }
+    //     for buff in hva {
+    //         let copy_size = core::cmp::min(remain.len(), buff.len());
+    //         buff[..copy_size].copy_from_slice(&remain[..copy_size]);
+    //         crate::arch::Hal::cache_flush(HostVirtAddr::from(buff.as_ptr() as usize), copy_size);
+    //         remain = &remain[copy_size..];
+    //         if remain.is_empty() {
+    //             break;
+    //         }
+    //     }
 
-        Ok(())
-    }
-
-    fn load_image_data(&mut self, gpa: GuestPhysAddr, data: &[u8]) -> anyhow::Result<()> {
-        let hva = self
-            .address_space
-            .translated_byte_buffer(gpa.as_usize().into(), data.len())
-            .ok_or(anyhow!("Fail to load [{gpa:?}, {:?})", gpa + data.len()))?;
-        let mut remain = data;
-
-        for buff in hva {
-            let copy_size = core::cmp::min(remain.len(), buff.len());
-            buff[..copy_size].copy_from_slice(&remain[..copy_size]);
-            crate::arch::Hal::cache_flush(HostVirtAddr::from(buff.as_ptr() as usize), copy_size);
-            remain = &remain[copy_size..];
-            if remain.is_empty() {
-                break;
-            }
-        }
-
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
 
 /// Information about a device in the VM
