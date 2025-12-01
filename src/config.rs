@@ -58,7 +58,7 @@ pub enum MemoryKind {
     /// Use memory regions mapped from host physical address
     Passthrough { hpa: HostPhysAddr, size: usize },
     /// Use fixed memory regions
-    Fixed { gpa: GuestPhysAddr, size: usize },
+    Vmem { gpa: GuestPhysAddr, size: usize },
 }
 
 /// A part of `AxVMCrateConfig`, which represents a `VM`.
