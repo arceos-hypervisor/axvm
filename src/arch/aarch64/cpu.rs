@@ -164,7 +164,7 @@ impl VCpu {
                 } => todo!(),
                 arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
                 arm_vcpu::AxVCpuExitReason::SystemDown => todo!(),
-                arm_vcpu::AxVCpuExitReason::Nothing => todo!(),
+                arm_vcpu::AxVCpuExitReason::Nothing => {}
                 arm_vcpu::AxVCpuExitReason::SendIPI {
                     target_cpu,
                     target_cpu_aux,

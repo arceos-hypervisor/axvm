@@ -23,7 +23,7 @@ type AddrSpace = axaddrspace::AddrSpace<axhal::paging::PagingHandlerImpl>;
 #[derive(Clone)]
 pub struct VmData {
     shared: Arc<Mutex<SharedData>>,
-    addrspace: Arc<Mutex<AddrSpace>>,
+    pub(crate) addrspace: Arc<Mutex<AddrSpace>>,
 }
 
 impl VmData {

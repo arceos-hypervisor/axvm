@@ -4,6 +4,7 @@ use std::os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinit
 
 use arm_vcpu::Aarch64VCpuSetupConfig;
 use fdt_edit::{Node, Property, RawProperty};
+use memory_addr::{MemoryAddr, align_down_4k, align_up_4k};
 
 use crate::{
     GuestPhysAddr, RunError, TASK_STACK_SIZE, VmData, VmStatusInitOps, VmStatusRunningOps,
@@ -285,6 +286,60 @@ impl VmStatusRunning {
             for path in nodes {
                 let _ = fdt.remove_node(&path);
             }
+
+            let mut pt_dev_region = vec![];
+
+            for node in fdt.all_nodes() {
+                for prop in &node.properties {
+                    if let Property::Reg(ls) = prop {
+                        for reg in ls {
+                            if let Some(size) = reg.size {
+                                // Align the base address and length to 4K boundaries.
+                                pt_dev_region.push((
+                                    align_down_4k(reg.address as _),
+                                    align_up_4k(size as _),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            pt_dev_region.sort_by_key(|(gpa, _)| *gpa);
+
+            // Merge overlapping regions.
+            let pt_dev_region = pt_dev_region.into_iter().fold(
+                Vec::<(usize, usize)>::new(),
+                |mut acc, (gpa, len)| {
+                    if let Some(last) = acc.last_mut() {
+                        if last.0 + last.1 >= gpa {
+                            // Merge with the last region.
+                            last.1 = (last.0 + last.1).max(gpa + len) - last.0;
+                        } else {
+                            acc.push((gpa, len));
+                        }
+                    } else {
+                        acc.push((gpa, len));
+                    }
+                    acc
+                },
+            );
+
+            for (gpa, len) in &pt_dev_region {
+                self.data
+                    .addrspace
+                    .lock()
+                    .map_linear(
+                        (*gpa).into(),
+                        (*gpa).into(),
+                        *len,
+                        MappingFlags::DEVICE
+                            | MappingFlags::READ
+                            | MappingFlags::WRITE
+                            | MappingFlags::USER,
+                    )
+                    .map_err(|e| anyhow!("{e}"))?;
+            }
+
             let root_address_cells = fdt.root().address_cells().unwrap_or(2);
             let root_size_cells = fdt.root().size_cells().unwrap_or(2);
 
@@ -306,18 +361,37 @@ impl VmStatusRunning {
             let f = fdt_edit::Fdt::from_bytes(&dtb_data).unwrap();
             debug!("Generated DTB:\n{f}");
 
-            let kind = MemoryKind::Identical {
-                size: dtb_data.len(),
-            };
-            let mut guest_mem = self.data.new_memory(&kind, flags);
+            let mut guest_mem = self.data.memories().into_iter().next().unwrap();
+            let mut dtb_start =
+                (guest_mem.0.as_usize() + guest_mem.1.min(512 * 1024 * 1024)) - dtb_data.len();
+            dtb_start = dtb_start.align_down_4k();
 
-            self.dtb_addr = guest_mem.gpa();
-
-            guest_mem.copy_from_slice(0, &dtb_data);
-            self.data.add_reserved_memory(guest_mem);
+            self.dtb_addr = GuestPhysAddr::from(dtb_start);
+            debug!(
+                "Loading generated DTB into GPA @{:#x} for VM {} ({})",
+                dtb_start,
+                config.id(),
+                config.name()
+            );
+            self.copy_to_guest(self.dtb_addr, &dtb_data);
         }
 
         Ok(())
+    }
+
+    fn copy_to_guest(&mut self, gpa: GuestPhysAddr, data: &[u8]) {
+        let parts = self
+            .data
+            .addrspace
+            .lock()
+            .translated_byte_buffer(gpa.as_usize().into(), data.len())
+            .unwrap();
+        let mut offset = 0;
+        for part in parts {
+            let len = part.len().min(data.len() - offset);
+            part.copy_from_slice(&data[offset..offset + len]);
+            offset += len;
+        }
     }
 }
 
