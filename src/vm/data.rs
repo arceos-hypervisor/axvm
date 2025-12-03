@@ -5,6 +5,7 @@ use std::{
 };
 
 pub use axaddrspace::MappingFlags;
+use memory_addr::MemoryAddr;
 
 use crate::vhal::ArchHal;
 use crate::{
@@ -62,22 +63,32 @@ impl VmData {
                 _gpa = GuestPhysAddr::from_usize(virt_to_phys(hva).as_usize());
                 _size = *size;
                 let mut g = self.addrspace.lock();
-                g.map_linear(_gpa.as_usize().into(), hva.as_usize().into(), _size, flags)
-                    .unwrap();
+                g.map_linear(
+                    _gpa.as_usize().into(),
+                    hva.as_usize().into(),
+                    _size.align_up_4k(),
+                    flags,
+                )
+                .unwrap();
             }
             MemoryKind::Passthrough { hpa, size } => {
                 hva = phys_to_virt(*hpa);
                 _gpa = GuestPhysAddr::from_usize(hva.as_usize());
                 _size = *size;
                 let mut g = self.addrspace.lock();
-                g.map_linear(_gpa.as_usize().into(), hva.as_usize().into(), _size, flags)
-                    .unwrap();
+                g.map_linear(
+                    _gpa.as_usize().into(),
+                    hva.as_usize().into(),
+                    _size.align_up_4k(),
+                    flags,
+                )
+                .unwrap();
             }
             MemoryKind::Vmem { gpa, size } => {
                 _gpa = *gpa;
                 _size = *size;
                 let mut g = self.addrspace.lock();
-                g.map_alloc(_gpa.as_usize().into(), _size, flags, true)
+                g.map_alloc(_gpa.as_usize().into(), _size.align_up_4k(), flags, true)
                     .unwrap();
             }
         }
@@ -241,7 +252,8 @@ impl Drop for GuestMemory {
                 };
             }
             _ => {
-                g.unmap(self.gpa.as_usize().into(), self.size).unwrap();
+                g.unmap(self.gpa.as_usize().into(), self.size.align_up_4k())
+                    .unwrap();
             }
         }
     }

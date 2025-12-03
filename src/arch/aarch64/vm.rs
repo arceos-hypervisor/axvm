@@ -3,6 +3,7 @@ use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity};
 
 use arm_vcpu::Aarch64VCpuSetupConfig;
+use fdt_edit::{Node, Property, RawProperty};
 
 use crate::{
     GuestPhysAddr, RunError, TASK_STACK_SIZE, VmData, VmStatusInitOps, VmStatusRunningOps,
@@ -275,21 +276,44 @@ impl VmStatusRunning {
                 config.id(),
                 config.name()
             );
-            let fdt = crate::fdt::FdtGen {
-                cpu_hard_ids: self.vcpus.iter().map(|vcpu| vcpu.id).collect(),
-                memories: self.data.memories(),
+            let mut fdt = crate::fdt::fdt_edit().expect("Need fdt");
+            let nodes = fdt
+                .find_all_by_path("/memory")
+                .into_iter()
+                .map(|o| o.1)
+                .collect::<Vec<_>>();
+            for path in nodes {
+                let _ = fdt.remove_node(&path);
+            }
+            let root_address_cells = fdt.root().address_cells().unwrap_or(2);
+            let root_size_cells = fdt.root().size_cells().unwrap_or(2);
+
+            for (i, m) in self.data.memories().iter().enumerate() {
+                let mut node = Node::new(format!("memory@{i}"));
+                node.add_property(Property::Raw(RawProperty::from_string(
+                    "device_type",
+                    "memory",
+                )));
+                node.add_property(Property::Reg(vec![fdt_edit::RegInfo {
+                    address: m.0.as_usize() as u64,
+                    size: Some(m.1 as _),
+                }]));
+                fdt.root_mut().add_child(node);
+            }
+
+            let dtb_data = fdt.to_bytes();
+
+            let f = fdt_edit::Fdt::from_bytes(&dtb_data).unwrap();
+            debug!("Generated DTB:\n{f}");
+
+            let kind = MemoryKind::Identical {
+                size: dtb_data.len(),
             };
+            let mut guest_mem = self.data.new_memory(&kind, flags);
 
-            let dtb_bytes = fdt.generate(&config)?;
-
-            let mut guest_mem = self.data.new_memory(
-                &MemoryKind::Identical {
-                    size: dtb_bytes.len(),
-                },
-                flags,
-            );
             self.dtb_addr = guest_mem.gpa();
-            guest_mem.copy_from_slice(0, &dtb_bytes);
+
+            guest_mem.copy_from_slice(0, &dtb_data);
             self.data.add_reserved_memory(guest_mem);
         }
 

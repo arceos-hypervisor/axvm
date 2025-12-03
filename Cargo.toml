@@ -24,11 +24,12 @@ fdt-parser = "0.5"
 lazyinit = "0.2"
 log = "0.4"
 spin = "0.10"
-timer_list = "0.1"
 thiserror = {version = "2", default-features = false}
+timer_list = "0.1"
 
 # System independent crates provided by ArceOS.
 axerrno = "0.1.0"
+bitmap-allocator = "0.2.1"
 cpumask = "0.1.0"
 kspin = "0.1"
 memory_addr = "0.4"
@@ -36,7 +37,6 @@ page_table_entry = {version = "0.5", features = ["arm-el2"]}
 page_table_multiarch = "0.5"
 percpu = {version = "0.2", features = ["arm-el2"]}
 vm-allocator.workspace = true
-bitmap-allocator = "0.2.1"
 vm-fdt.workspace = true
 
 # System dependent modules provided by ArceOS-Hypervisor.
@@ -44,11 +44,12 @@ axaddrspace = "0.2"
 # axdevice = {git = "https://github.com/arceos-hypervisor/axdevice.git"}
 # axdevice_base = "0.1"
 # axvcpu = "0.1"
-axvmconfig = {version = "0.1", default-features = false}
-axruntime.workspace = true
 axhal.workspace = true
+axruntime.workspace = true
 axstd.workspace = true
 axvm-types.workspace = true
+axvmconfig = {version = "0.1", default-features = false}
+fdt-edit = {git = "https://github.com/drivercraft/fdt-parser.git"}
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 # x86_vcpu = "0.1"

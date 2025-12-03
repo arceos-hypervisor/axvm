@@ -1,91 +1,222 @@
 use std::{
-    collections::{btree_map::BTreeMap, btree_set::BTreeSet},
+    collections::{btree_map::BTreeMap, btree_map::Entry, btree_set::BTreeSet},
     string::{String, ToString},
     vec::Vec,
 };
 
+use anyhow::Result;
 use fdt_parser::{Fdt, Node};
 use vm_fdt::{FdtWriter, FdtWriterNode};
 
-use crate::{AxVMConfig, GuestPhysAddr, vhal::cpu::CpuHardId};
+use crate::{AxVMConfig, GuestPhysAddr, fdt::fdt, vhal::cpu::CpuHardId};
 
-pub struct FdtGen {
+pub struct FdtBuilder {
     pub cpu_hard_ids: Vec<CpuHardId>,
     pub memories: Vec<(GuestPhysAddr, usize)>, // (start, size)
 }
 
-impl FdtGen {
-    pub fn generate(&self, vm_cfg: &AxVMConfig) -> anyhow::Result<Vec<u8>> {
-        let mut fdt_writer = FdtWriter::new().unwrap();
-        // Track the level of the previously processed node for level change handling
-        let mut previous_node_level = 0;
-        // Maintain a stack of FDT nodes to correctly start and end nodes
-        let mut node_stack: Vec<FdtWriterNode> = Vec::new();
-        let fdt = super::fdt().ok_or_else(|| anyhow!("No FDT found"))?;
+impl FdtBuilder {
+    pub fn generate(&self, _vm_cfg: &AxVMConfig) -> Result<Vec<u8>> {
+        let mut generator = Gen::new();
+        generator.generate()
+    }
 
-        let passthrough_device_names = find_all_passthrough_devices(vm_cfg, &fdt);
+    // pub fn generate2(&self, vm_cfg: &AxVMConfig) -> anyhow::Result<Vec<u8>> {
+    //     let mut fdt_writer = FdtWriter::new().unwrap();
+    //     // Track the level of the previously processed node for level change handling
+    //     let mut previous_node_level = 0;
+    //     // Maintain a stack of FDT nodes to correctly start and end nodes
+    //     let mut node_stack: Vec<FdtWriterNode> = Vec::new();
+    //     let fdt = super::fdt().ok_or_else(|| anyhow!("No FDT found"))?;
 
+    //     let passthrough_device_names = find_all_passthrough_devices(vm_cfg, &fdt);
+
+    //     let all_nodes = fdt.all_nodes();
+
+    //     for (index, node) in all_nodes.iter().enumerate() {
+    //         let node_path = build_node_path(&all_nodes, index);
+    //         let node_action = determine_node_action(node, &node_path, &passthrough_device_names);
+
+    //         match node_action {
+    //             NodeAction::RootNode => {
+    //                 node_stack.push(fdt_writer.begin_node("").unwrap());
+    //             }
+    //             NodeAction::CpuNode => {
+    //                 let need = need_cpu_node(&self.cpu_hard_ids, node, &node_path);
+    //                 if need {
+    //                     handle_node_level_change(
+    //                         &mut fdt_writer,
+    //                         &mut node_stack,
+    //                         node.level(),
+    //                         previous_node_level,
+    //                     );
+    //                     node_stack.push(fdt_writer.begin_node(node.name()).unwrap());
+    //                 } else {
+    //                     continue;
+    //                 }
+    //             }
+    //             NodeAction::Skip => {
+    //                 continue;
+    //             }
+    //             _ => {
+    //                 trace!(
+    //                     "Found exact passthrough device node: {}, path: {}",
+    //                     node.name(),
+    //                     node_path
+    //                 );
+    //                 handle_node_level_change(
+    //                     &mut fdt_writer,
+    //                     &mut node_stack,
+    //                     node.level(),
+    //                     previous_node_level,
+    //                 );
+    //                 node_stack.push(fdt_writer.begin_node(node.name()).unwrap());
+    //             }
+    //         }
+
+    //         previous_node_level = node.level();
+
+    //         // Copy all properties of the node
+    //         for prop in node.properties() {
+    //             fdt_writer.property(prop.name, prop.raw_value()).unwrap();
+    //         }
+    //     }
+
+    //     // End all unclosed nodes
+    //     while let Some(node) = node_stack.pop() {
+    //         previous_node_level -= 1;
+    //         fdt_writer.end_node(node).unwrap();
+    //     }
+    //     assert_eq!(previous_node_level, 0);
+
+    //     let out = fdt_writer.finish().unwrap();
+
+    //     Ok(out)
+    // }
+}
+
+struct Gen {
+    tree: Tree,
+}
+
+impl Gen {
+    fn new() -> Self {
+        Self {
+            tree: Tree::default(),
+        }
+    }
+
+    fn generate(&mut self) -> Result<Vec<u8>> {
+        let fdt = fdt().ok_or_else(|| anyhow::anyhow!("No FDT found"))?;
         let all_nodes = fdt.all_nodes();
 
         for (index, node) in all_nodes.iter().enumerate() {
-            let node_path = build_node_path(&all_nodes, index);
-            let node_action = determine_node_action(node, &node_path, &passthrough_device_names);
+            let path = build_node_path(&all_nodes, index);
+            self.tree.insert(&path, node.clone())?;
+        }
 
-            match node_action {
-                NodeAction::RootNode => {
-                    node_stack.push(fdt_writer.begin_node("").unwrap());
-                }
-                NodeAction::CpuNode => {
-                    let need = need_cpu_node(&self.cpu_hard_ids, node, &node_path);
-                    if need {
-                        handle_node_level_change(
-                            &mut fdt_writer,
-                            &mut node_stack,
-                            node.level(),
-                            previous_node_level,
-                        );
-                        node_stack.push(fdt_writer.begin_node(node.name()).unwrap());
-                    } else {
-                        continue;
-                    }
-                }
-                NodeAction::Skip => {
-                    continue;
-                }
-                _ => {
-                    trace!(
-                        "Found exact passthrough device node: {}, path: {}",
-                        node.name(),
-                        node_path
-                    );
-                    handle_node_level_change(
-                        &mut fdt_writer,
-                        &mut node_stack,
-                        node.level(),
-                        previous_node_level,
-                    );
-                    node_stack.push(fdt_writer.begin_node(node.name()).unwrap());
-                }
-            }
+        self.tree.finalize()?;
+        self.to_data()
+    }
 
-            previous_node_level = node.level();
+    fn to_data(&self) -> Result<Vec<u8>> {
+        let mut fdt_writer = FdtWriter::new().map_err(|e| anyhow::anyhow!("{e}"))?;
+        self.tree.write(&mut fdt_writer)?;
+        let data = fdt_writer.finish().map_err(|e| anyhow::anyhow!("{e}"))?;
 
-            // Copy all properties of the node
-            for prop in node.properties() {
-                fdt_writer.property(prop.name, prop.raw_value()).unwrap();
+        let fdt = Fdt::from_bytes(&data)?;
+        print_fdt(&fdt);
+        Ok(data)
+    }
+}
+
+#[derive(Default)]
+struct Tree {
+    nodes: BTreeMap<String, TreeNode>,
+    pending_links: Vec<(String, String)>,
+}
+
+impl Tree {
+    fn insert(&mut self, path: &str, node: Node) -> Result<()> {
+        match self.nodes.entry(path.to_string()) {
+            Entry::Occupied(mut occ) => occ.get_mut().node = node,
+            Entry::Vacant(vac) => {
+                vac.insert(TreeNode::new(node));
             }
         }
 
-        // End all unclosed nodes
-        while let Some(node) = node_stack.pop() {
-            previous_node_level -= 1;
-            fdt_writer.end_node(node).unwrap();
+        if let Some(parent) = parent_path(path) {
+            self.pending_links.push((parent, path.to_string()));
         }
-        assert_eq!(previous_node_level, 0);
 
-        let out = fdt_writer.finish().unwrap();
+        Ok(())
+    }
 
-        Ok(out)
+    fn finalize(&mut self) -> Result<()> {
+        for (parent, child) in self.pending_links.drain(..) {
+            let parent_node = self
+                .nodes
+                .get_mut(&parent)
+                .ok_or_else(|| anyhow::anyhow!("Parent node {parent} missing for {child}"))?;
+            parent_node.children.push(child);
+        }
+        Ok(())
+    }
+
+    fn write(&self, writer: &mut FdtWriter) -> Result<()> {
+        self.write_node(writer, "/")
+    }
+
+    fn write_node(&self, writer: &mut FdtWriter, path: &str) -> Result<()> {
+        let entry = self
+            .nodes
+            .get(path)
+            .ok_or_else(|| anyhow::anyhow!("Node {path} not found"))?;
+        debug!("Writing node: {}", path);
+        let name = if path == "/" { "" } else { entry.node.name() };
+        let handle = writer
+            .begin_node(name)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        for prop in entry.node.properties() {
+            writer
+                .property(prop.name, prop.raw_value())
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+        }
+
+        for child in &entry.children {
+            self.write_node(writer, child)?;
+        }
+
+        writer.end_node(handle).map_err(|e| anyhow::anyhow!("{e}"))
+    }
+}
+
+struct TreeNode {
+    node: Node,
+    children: Vec<String>,
+}
+
+impl TreeNode {
+    fn new(node: Node) -> Self {
+        Self {
+            node,
+            children: Vec::new(),
+        }
+    }
+}
+
+fn parent_path(path: &str) -> Option<String> {
+    if path == "/" {
+        None
+    } else if let Some(idx) = path.rfind('/') {
+        if idx == 0 {
+            Some("/".to_string())
+        } else {
+            Some(path[..idx].to_string())
+        }
+    } else {
+        None
     }
 }
 
@@ -453,7 +584,9 @@ pub fn build_optimized_node_cache<'a>(fdt: &'a Fdt) -> BTreeMap<String, Vec<Node
 
         trace!(
             "Adding node to cache: {} (level: {}, index: {})",
-            node_path, node.level(), index
+            node_path,
+            node.level(),
+            index
         );
         node_cache.entry(node_path).or_default().push(node.clone());
     }
@@ -730,4 +863,20 @@ fn get_descendant_nodes_by_path<'a>(
     }
 
     descendant_paths
+}
+
+fn print_fdt(fdt: &Fdt) {
+    debug!("FDT Structure:");
+    for node in fdt.all_nodes() {
+        let indent = "  ".repeat(node.level().saturating_sub(1));
+        debug!("{}Node: {}", indent, node.name());
+        for prop in node.properties() {
+            debug!(
+                "{}  Property: {} = {:?}",
+                indent,
+                prop.name,
+                prop.raw_value()
+            );
+        }
+    }
 }
