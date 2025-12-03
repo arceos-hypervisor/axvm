@@ -8,8 +8,8 @@ use crate::{AxVMConfig, arch::VmInit};
 
 mod data;
 mod machine;
-use machine::*;
 pub(crate) use data::*;
+use machine::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VmId(usize);

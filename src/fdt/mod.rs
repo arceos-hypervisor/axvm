@@ -1,16 +1,20 @@
 use alloc::vec::Vec;
-use fdt_parser::{Fdt, Status};
 
-mod r#gen;
-
-pub use r#gen::FdtGen;
-
-pub(crate) fn fdt() -> Option<Fdt> {
+pub(crate) fn fdt_edit() -> Option<fdt_edit::Fdt> {
     let addr = axhal::get_bootarg();
     if addr == 0 {
         return None;
     }
-    let fdt = unsafe { Fdt::from_ptr(addr as *mut u8).ok()? };
+    let fdt = unsafe { fdt_edit::Fdt::from_ptr(addr as *mut u8).ok()? };
+    Some(fdt)
+}
+
+pub(crate) fn fdt() -> Option<fdt_parser::Fdt> {
+    let addr = axhal::get_bootarg();
+    if addr == 0 {
+        return None;
+    }
+    let fdt = unsafe { fdt_parser::Fdt::from_ptr(addr as *mut u8).ok()? };
     Some(fdt)
 }
 
@@ -21,7 +25,7 @@ pub fn cpu_list() -> Option<Vec<usize>> {
     let cpus = nodes
         .into_iter()
         .filter(|node| node.name().contains("cpu@"))
-        .filter(|node| !matches!(node.status(), Some(Status::Disabled)))
+        .filter(|node| !matches!(node.status(), Some(fdt_parser::Status::Disabled)))
         .map(|node| {
             let reg = node
                 .reg()
