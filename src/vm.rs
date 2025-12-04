@@ -327,7 +327,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             )?;
         }
 
-<<<<<<< HEAD
+
         let read_guest_mem = {
             let address_space = address_space.clone();
             Arc::new(move |addr: GuestPhysAddr, len: usize| -> AxResult<Vec<u8>> {
@@ -474,7 +474,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
             vcpu.setup(
                 entry,
-                inner_mut.address_space.page_table_root(),
+                inner_mut.address_space.lock().page_table_root(),
                 setup_config,
             )?;
         }
@@ -519,7 +519,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
     /// Returns the base address of the two-stage address translation page table for the VM.
     pub fn ept_root(&self) -> HostPhysAddr {
-        self.inner_mut.lock().address_space.page_table_root()
+        self.inner_mut.lock().address_space.lock().page_table_root()
     }
 
     /// Returns to the VM's configuration.
@@ -547,6 +547,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let g = self.inner_mut.lock();
         let image_load_hva = g
             .address_space
+            .lock()
             .translated_byte_buffer(image_load_gpa, image_size)
             .expect("Failed to translate kernel image load address");
         Ok(image_load_hva)
@@ -678,6 +679,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     .inner_mut
                     .lock()
                     .address_space
+                    .lock()
                     .handle_page_fault(*addr, *access_flags),
                 _ => false,
             };
@@ -743,13 +745,14 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         self.inner_mut
             .lock()
             .address_space
+            .lock()
             .map_linear(gpa, hpa, size, flags)?;
         Ok(())
     }
 
     /// Unmaps a region of guest physical memory.
     pub fn unmap_region(&self, gpa: GuestPhysAddr, size: usize) -> AxResult {
-        self.inner_mut.lock().address_space.unmap(gpa, size)?;
+        self.inner_mut.lock().address_space.lock().unmap(gpa, size)?;
         Ok(())
     }
 
@@ -763,7 +766,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         }
 
         let g = self.inner_mut.lock();
-        match g.address_space.translated_byte_buffer(gpa_ptr, size) {
+        match g.address_space.lock().translated_byte_buffer(gpa_ptr, size) {
             Some(buffers) => {
                 let mut data_bytes = Vec::with_capacity(size);
                 for chunk in buffers {
@@ -799,6 +802,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             .inner_mut
             .lock()
             .address_space
+            .lock()
             .translated_byte_buffer(gpa_ptr, core::mem::size_of::<T>())
         {
             Some(mut buffer) => {
@@ -866,7 +870,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let gpa = gpa.unwrap_or_else(|| hpa.as_usize().into());
 
         let mut g = self.inner_mut.lock();
-        g.address_space.map_linear(
+        g.address_space.lock().map_linear(
             gpa,
             hpa,
             layout.size(),
@@ -896,7 +900,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             "Cannot allocate zero-sized memory region"
         );
         let mut g = self.inner_mut.lock();
-        g.address_space.map_linear(
+        g.address_space.lock().map_linear(
             gpa.unwrap(),
             gpa.unwrap().as_usize().into(),
             layout.size(),
@@ -947,7 +951,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 region.size()
             );
             // Unmap the region from guest physical address space
-            if let Err(e) = inner_mut.address_space.unmap(region.gpa, region.size()) {
+            if let Err(e) = inner_mut.address_space.lock().unmap(region.gpa, region.size()) {
                 warn!(
                     "VM[{}] failed to unmap region at GPA={:#x}: {:?}",
                     self.id(),
@@ -992,7 +996,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             "VM[{}] clearing remaining address space mappings",
             self.id()
         );
-        inner_mut.address_space.clear();
+        inner_mut.address_space.lock().clear();
 
         // Release the lock before accessing inner_const
         drop(inner_mut);
