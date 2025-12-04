@@ -9,7 +9,7 @@ use axaddrspace::GuestPhysAddr;
 
 pub use axvmconfig::{
     AxVMCrateConfig, EmulatedDeviceConfig, PassThroughDeviceConfig, VMInterruptMode, VMType,
-    VmMemConfig, VmMemMappingType,
+    VmMemConfig, VmMemMappingType, VirtioBlkMmioDeviceConfig,
 };
 
 /// A part of `AxVCpuConfig`, which represents an architecture-dependent `VCpu`.
@@ -58,6 +58,7 @@ pub struct AxVMConfig {
     image_config: VMImageConfig,
     memory_regions: Vec<VmMemConfig>,
     emu_devices: Vec<EmulatedDeviceConfig>,
+    virtio_blk_mmio: Vec<VirtioBlkMmioDeviceConfig>,
     pass_through_devices: Vec<PassThroughDeviceConfig>,
     // TODO: improve interrupt passthrough
     spi_list: Vec<u32>,
@@ -85,6 +86,7 @@ impl From<AxVMCrateConfig> for AxVMConfig {
             },
             memory_regions: cfg.kernel.memory_regions,
             emu_devices: cfg.devices.emu_devices,
+            virtio_blk_mmio: cfg.devices.virtio_blk_mmio.unwrap_or_default(),
             pass_through_devices: cfg.devices.passthrough_devices,
             spi_list: Vec::new(),
             interrupt_mode: cfg.devices.interrupt_mode,
@@ -166,6 +168,11 @@ impl AxVMConfig {
     /// Returns configurations related to VM emulated devices.
     pub fn emu_devices(&self) -> &Vec<EmulatedDeviceConfig> {
         &self.emu_devices
+    }
+
+    /// Returns configurations related to Virtio-blk MMIO devices.
+    pub fn virtio_blk_mmio(&self) -> &Vec<VirtioBlkMmioDeviceConfig> {
+        &self.virtio_blk_mmio
     }
 
     /// Returns configurations related to VM passthrough devices.

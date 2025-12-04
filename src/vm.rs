@@ -46,7 +46,7 @@ unsafe impl<U: AxVCpuHal> Sync for AxVMInnerConst<U> {}
 
 struct AxVMInnerMut<H: AxVMHal> {
     // Todo: use more efficient lock.
-    address_space: Mutex<AddrSpace<H::PagingHandler>>,
+    address_space: Arc<Mutex<AddrSpace<H::PagingHandler>>>,
     _marker: core::marker::PhantomData<H>,
 }
 
@@ -64,7 +64,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     /// Creates a new VM with the given configuration.
     /// Returns an error if the configuration is invalid.
     /// The VM is not started until `boot` is called.
-    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>> {
+    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>>
+    where
+        <H as AxVMHal>::PagingHandler: Send + 'static,
+    {
         let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
 
         debug!(
@@ -104,7 +107,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             )?));
         }
         let mut address_space =
-            AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
+            Arc::new(Mutex::new(AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?));
 
         for mem_region in config.memory_regions() {
             let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
@@ -137,7 +140,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         mem_region.size,
                     ) {
                     } else {
-                        address_space.map_linear(
+                        address_space.lock().map_linear(
                             GuestPhysAddr::from(mem_region.gpa),
                             HostPhysAddr::from(mem_region.gpa),
                             mem_region.size,
@@ -150,7 +153,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                         );
                     }
 
-                    address_space.map_linear(
+                    address_space.lock().map_linear(
                         GuestPhysAddr::from(mem_region.gpa),
                         HostPhysAddr::from(mem_region.gpa),
                         mem_region.size,
@@ -161,12 +164,15 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     // Note: currently we use `map_alloc`,
                     // which allocates real physical memory in units of physical page frames,
                     // which may not be contiguous!!!
-                    address_space.map_alloc(
+                    address_space.lock().map_alloc(
                         GuestPhysAddr::from(mem_region.gpa),
                         mem_region.size,
                         mapping_flags,
                         true,
                     )?;
+                }
+                VmMemMappingType::MapReserved => {
+                    warn!("MapReserved memory mapping type is not yet implemented");
                 }
             }
         }
@@ -209,7 +215,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 });
 
         for (gpa, len) in &pt_dev_region {
-            address_space.map_linear(
+            address_space.lock().map_linear(
                 GuestPhysAddr::from(*gpa),
                 HostPhysAddr::from(*gpa),
                 *len,
@@ -220,9 +226,79 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             )?;
         }
 
-        let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
-            emu_configs: config.emu_devices().to_vec(),
-        });
+        let read_guest_mem = {
+            let address_space = address_space.clone();
+            Arc::new(move |addr: GuestPhysAddr, len: usize| -> AxResult<Vec<u8>> {
+                let addr_space = address_space.lock();
+                match addr_space.translated_byte_buffer(addr, len) {
+                    Some(buffers) => {
+                        let mut data_bytes = Vec::with_capacity(len);
+                        for chunk in buffers {
+                            let remaining = len - data_bytes.len();
+                            let chunk_size = remaining.min(chunk.len());
+                            data_bytes.extend_from_slice(&chunk[..chunk_size]);
+                            if data_bytes.len() >= len {
+                                break;
+                            }
+                        }
+                        if data_bytes.len() < len {
+                            return ax_err!(
+                                InvalidInput,
+                                "Insufficient data in guest memory to read the requested object"
+                            );
+                        }
+                        Ok(data_bytes)
+                    }
+                    None => ax_err!(
+                        InvalidInput,
+                        "Failed to translate guest physical address or insufficient buffer size"
+                    ),
+                }
+            })
+        };
+
+        let write_guest_mem = {
+            let address_space = address_space.clone();
+            Arc::new(move |addr: GuestPhysAddr, data: &[u8]| -> AxResult<()> {
+                let addr_space = address_space.lock();
+                match addr_space.translated_byte_buffer(addr, data.len()) {
+                    Some(mut buffer) => {
+                        let mut copied_bytes = 0;
+                        for (_i, chunk) in buffer.iter_mut().enumerate() {
+                            let end = copied_bytes + chunk.len();
+                            let len = chunk.len();
+                            if copied_bytes >= data.len() {
+                                break;
+                            }
+                            let src_end = (copied_bytes + len).min(data.len());
+                            chunk[..src_end - copied_bytes].copy_from_slice(&data[copied_bytes..src_end]);
+                            copied_bytes += len;
+                        }
+                        Ok(())
+                    }
+                    None => ax_err!(InvalidInput, "Failed to translate guest physical address"),
+                }
+            })
+        };
+
+        let inject_irq = {
+            let vm_id = config.id();
+            Arc::new(move |irq: usize| -> AxResult {
+                // Inject to vCPU 0 by default for now
+                // Ideally we should have a way to specify target vCPU or use a round-robin
+                H::inject_irq_to_vcpu(vm_id, 0, irq)
+            })
+        };
+
+        let mut devices = axdevice::AxVmDevices::new(
+            AxVmDeviceConfig {
+                emu_configs: config.emu_devices().to_vec(),
+                virtio_blk_configs: config.virtio_blk_mmio().to_vec(),
+            },
+            read_guest_mem,
+            write_guest_mem,
+            inject_irq,
+        );
 
         let passthrough = config.interrupt_mode() == VMInterruptMode::Passthrough;
 
@@ -276,7 +352,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 devices,
             },
             inner_mut: AxVMInnerMut {
-                address_space: Mutex::new(address_space),
+                address_space: address_space,
                 _marker: core::marker::PhantomData,
             },
         });
