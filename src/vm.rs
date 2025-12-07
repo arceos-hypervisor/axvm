@@ -3,7 +3,7 @@ use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use axaddrspace::HostVirtAddr;
-use axerrno::{AxError, AxResult, ax_err, ax_err_type};
+use axerrno::{AxError, AxResult, ax_err, ax_err_type, AxErrorKind};
 use core::alloc::Layout;
 use core::fmt;
 use memory_addr::{align_down_4k, align_up_4k};
@@ -14,7 +14,7 @@ use axdevice::{AxVmDeviceConfig, AxVmDevices};
 use axvcpu::{AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use cpumask::CpuMask;
 
-use crate::config::{AxVMConfig, PhysCpuList};
+use crate::config::{AxVMConfig, PhysCpuList, VmMemMappingType};
 use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 use crate::{AxVMHal, has_hardware_support};
 
@@ -137,7 +137,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     where
         <H as AxVMHal>::PagingHandler: Send + 'static,
     {
-        let vcpu_id_pcpu_sets = config.get_vcpu_affinities_pcpu_ids();
+        let vcpu_id_pcpu_sets = config.phys_cpu_ls.get_vcpu_affinities_pcpu_ids();
 
         let address_space = Arc::new(Mutex::new(
             AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?
@@ -167,7 +167,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     }
 
     /// Sets up the VM before booting.
-    pub fn init(&self) -> AxResult {
+    pub fn init(&self) -> AxResult
+    where
+        <H as AxVMHal>::PagingHandler: Send + 'static,
+    {
         let mut inner_mut = self.inner_mut.lock();
 
         let dtb_addr = inner_mut.config.image_config().dtb_load_gpa;
@@ -226,41 +229,41 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             // Handle ram region.
             match mem_region.map_type {
                 VmMemMappingType::MapIdentical => {
-                    if H::alloc_memory_region_at(
-                        HostPhysAddr::from(mem_region.gpa),
-                        mem_region.size,
-                    ) {
-                    } else {
-                        address_space.lock().map_linear(
-                            GuestPhysAddr::from(mem_region.gpa),
-                            HostPhysAddr::from(mem_region.gpa),
-                            mem_region.size,
-                            mapping_flags,
-                        )?;
-                        warn!(
-                            "Failed to allocate memory region at {:#x} for VM [{}]",
-                            mem_region.gpa,
-                            self.id()
-                        );
-                    }
-
-                    address_space.lock().map_linear(
+                    match address_space.lock().map_linear(
                         GuestPhysAddr::from(mem_region.gpa),
                         HostPhysAddr::from(mem_region.gpa),
                         mem_region.size,
                         mapping_flags,
-                    )?;
+                    ) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            if e != AxErrorKind::AlreadyExists {
+                                return Err(e.into());
+                            }
+                            warn!("Memory region [{:#x}] already mapped, skipping...", mem_region.gpa);
+                        }
+                    }
+
+
                 }
                 VmMemMappingType::MapAlloc => {
                     // Note: currently we use `map_alloc`,
                     // which allocates real physical memory in units of physical page frames,
                     // which may not be contiguous!!!
-                    address_space.lock().map_alloc(
+                    match address_space.lock().map_alloc(
                         GuestPhysAddr::from(mem_region.gpa),
                         mem_region.size,
                         mapping_flags,
                         true,
-                    )?;
+                    ) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            if e != AxErrorKind::AlreadyExists {
+                                return Err(e.into());
+                            }
+                            warn!("Memory region [{:#x}] already mapped, skipping...", mem_region.gpa);
+                        }
+                    }
                 }
                 VmMemMappingType::MapReserved => {
                     warn!("MapReserved memory mapping type is not yet implemented");
@@ -384,7 +387,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         };
 
         let inject_irq = {
-            let vm_id = config.id();
+            let vm_id = self.id();
             Arc::new(move |irq: usize| -> AxResult {
                 // Inject to vCPU 0 by default for now
                 // Ideally we should have a way to specify target vCPU or use a round-robin

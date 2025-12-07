@@ -53,6 +53,7 @@ pub struct AxVMConfig {
     pub(crate) phys_cpu_ls: PhysCpuList,
     pub cpu_config: AxVCpuConfig,
     pub image_config: VMImageConfig,
+    memory_regions: Vec<VmMemConfig>,
     emu_devices: Vec<EmulatedDeviceConfig>,
     virtio_blk_mmio: Vec<VirtioBlkMmioDeviceConfig>,
     pass_through_devices: Vec<PassThroughDeviceConfig>,
@@ -84,7 +85,7 @@ impl From<AxVMCrateConfig> for AxVMConfig {
                 dtb_load_gpa: cfg.kernel.dtb_load_addr.map(GuestPhysAddr::from),
                 ramdisk_load_gpa: cfg.kernel.ramdisk_load_addr.map(GuestPhysAddr::from),
             },
-            // memory_regions: cfg.kernel.memory_regions,
+            memory_regions: cfg.kernel.memory_regions,
             emu_devices: cfg.devices.emu_devices,
             virtio_blk_mmio: cfg.devices.virtio_blk_mmio.unwrap_or_default(),
             pass_through_devices: cfg.devices.passthrough_devices,
@@ -135,15 +136,15 @@ impl AxVMConfig {
     pub fn pass_through_addresses(&self) -> &Vec<PassThroughAddressConfig> {
         &self.pass_through_addresses
     }
-    // /// Returns configurations related to VM memory regions.
-    // pub fn memory_regions(&self) -> Vec<VmMemConfig> {
-    //     &self.memory_regions
-    // }
+    /// Returns configurations related to VM memory regions.
+    pub fn memory_regions(&self) -> &Vec<VmMemConfig> {
+        &self.memory_regions
+    }
 
-    // /// Adds a new memory region to the VM configuration.
-    // pub fn add_memory_region(&mut self, region: VmMemConfig) {
-    //     self.memory_regions.push(region);
-    // }
+    /// Adds a new memory region to the VM configuration.
+    pub fn add_memory_region(&mut self, region: VmMemConfig) {
+        self.memory_regions.push(region);
+    }
 
     // /// Checks if the VM memory regions contain a specific range.
     // pub fn contains_memory_range(&self, range: &Range<usize>) -> bool {
@@ -195,6 +196,10 @@ impl AxVMConfig {
     /// Returns the interrupt mode of the VM.
     pub fn interrupt_mode(&self) -> VMInterruptMode {
         self.interrupt_mode
+    }
+
+    pub fn get_vcpu_affinities_pcpu_ids(&self) -> Vec<(usize, Option<usize>, usize)> {
+        self.phys_cpu_ls.get_vcpu_affinities_pcpu_ids()
     }
 }
 
