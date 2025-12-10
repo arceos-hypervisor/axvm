@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity};
 
 use arm_vcpu::Aarch64VCpuSetupConfig;
-use fdt_edit::{Node, Property, RawProperty};
+use fdt_edit::{Node, NodeRef, Property, RegInfo};
 use memory_addr::{MemoryAddr, align_down_4k, align_up_4k};
 
 use crate::{
@@ -279,9 +279,9 @@ impl VmStatusRunning {
             );
             let mut fdt = crate::fdt::fdt_edit().expect("Need fdt");
             let nodes = fdt
-                .find_all_by_path("/memory")
+                .find_by_path("/memory")
                 .into_iter()
-                .map(|o| o.1)
+                .map(|o| o.path())
                 .collect::<Vec<_>>();
             for path in nodes {
                 let _ = fdt.remove_node(&path);
@@ -290,16 +290,33 @@ impl VmStatusRunning {
             let mut pt_dev_region = vec![];
 
             for node in fdt.all_nodes() {
-                for prop in &node.properties {
-                    if let Property::Reg(ls) = prop {
-                        for reg in ls {
-                            if let Some(size) = reg.size {
-                                // Align the base address and length to 4K boundaries.
-                                pt_dev_region.push((
-                                    align_down_4k(reg.address as _),
-                                    align_up_4k(size as _),
-                                ));
-                            }
+                if matches!(node.status(), Some(fdt_edit::Status::Disabled)) {
+                    continue;
+                }
+
+                if let Some(regs) = node.regs() {
+                    for reg in regs {
+                        if let Some(size) = reg.size
+                            && size > 0
+                        {
+                            // Align the base address and length to 4K boundaries.
+                            pt_dev_region
+                                .push((align_down_4k(reg.address as _), align_up_4k(size as _)));
+                        }
+                    }
+                }
+
+                if let NodeRef::Pci(pci) = &node
+                    && let Some(ranges) = pci.ranges()
+                {
+                    for range in ranges {
+                        if range.size > 0
+                        {
+                            // Align the base address and length to 4K boundaries.
+                            pt_dev_region.push((
+                                align_down_4k(range.cpu_address as _),
+                                align_up_4k(range.size as _),
+                            ));
                         }
                     }
                 }
@@ -344,19 +361,21 @@ impl VmStatusRunning {
             let root_size_cells = fdt.root().size_cells().unwrap_or(2);
 
             for (i, m) in self.data.memories().iter().enumerate() {
-                let mut node = Node::new(format!("memory@{i}"));
-                node.add_property(Property::Raw(RawProperty::from_string(
-                    "device_type",
-                    "memory",
-                )));
-                node.add_property(Property::Reg(vec![fdt_edit::RegInfo {
-                    address: m.0.as_usize() as u64,
-                    size: Some(m.1 as _),
-                }]));
+                let mut node = Node::new(&format!("memory@{i}"));
+                let mut prop = Property::new("device_type", vec![]);
+                prop.set_string("memory");
+                node.add_property(prop);
                 fdt.root_mut().add_child(node);
+                let mut node = fdt
+                    .get_by_path_mut(&format!("/memory@{i}"))
+                    .expect("must has node");
+                node.set_regs(&[RegInfo {
+                    address: m.0.as_usize() as u64,
+                    size: Some(m.1 as u64),
+                }]);
             }
 
-            let dtb_data = fdt.to_bytes();
+            let dtb_data = fdt.encode();
 
             let f = fdt_edit::Fdt::from_bytes(&dtb_data).unwrap();
             debug!("Generated DTB:\n{f}");

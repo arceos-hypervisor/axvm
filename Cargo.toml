@@ -49,7 +49,7 @@ axruntime.workspace = true
 axstd.workspace = true
 axvm-types.workspace = true
 axvmconfig = {version = "0.1", default-features = false}
-fdt-edit = {git = "https://github.com/drivercraft/fdt-parser.git"}
+fdt-edit = "0.1"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 # x86_vcpu = "0.1"
