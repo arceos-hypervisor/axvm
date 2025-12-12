@@ -234,18 +234,6 @@ pub struct VmStatusRunning {
 }
 
 impl VmStatusRunning {
-    // fn load_images(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
-    //     // Load other images (BIOS, DTB, Ramdisk) similarly...
-    //     debug!(
-    //         "Loading kernel image for VM {} ({})",
-    //         config.id(),
-    //         config.name()
-    //     );
-    //     let _main_region_idx = self.load_kernel_image(config)?;
-
-    //     Ok(())
-    // }
-
     fn make_dtb(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
         let flags =
             MappingFlags::READ | MappingFlags::WRITE | MappingFlags::WRITE | MappingFlags::USER;
@@ -385,7 +373,7 @@ impl VmStatusRunning {
                             | MappingFlags::WRITE
                             | MappingFlags::USER,
                     )
-                    .map_err(|e| anyhow!("`{name}` map fail:\n {e}"))?;
+                    .map_err(|e| anyhow!("`{name}` map [{:#x}, {:#x}) fail:\n {e}", *gpa, len))?;
             }
 
             let mut guest_mem = self.data.memories().into_iter().next().unwrap();
@@ -406,6 +394,8 @@ impl VmStatusRunning {
         Ok(())
     }
 
+    fn handle_node_regs(dev_vec: &mut [DevMapConfig], node: &NodeRef<'_>) {}
+
     fn copy_to_guest(&mut self, gpa: GuestPhysAddr, data: &[u8]) {
         let parts = self
             .data
@@ -425,3 +415,10 @@ impl VmStatusRunning {
 /// Information about a device in the VM
 #[derive(Debug, Clone)]
 pub struct DeviceInfo {}
+
+#[derive(Debug, Clone)]
+struct DevMapConfig {
+    gpa: GuestPhysAddr,
+    size: usize,
+    name: String,
+}
