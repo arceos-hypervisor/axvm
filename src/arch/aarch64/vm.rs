@@ -1,6 +1,9 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity};
+use std::{
+    os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
+    string::ToString,
+};
 
 use arm_vcpu::Aarch64VCpuSetupConfig;
 use fdt_edit::{Node, NodeRef, Property, RegInfo};
@@ -293,6 +296,7 @@ impl VmStatusRunning {
                 if matches!(node.status(), Some(fdt_edit::Status::Disabled)) {
                     continue;
                 }
+                let name = node.name().to_string();
 
                 if let Some(regs) = node.regs() {
                     for reg in regs {
@@ -300,8 +304,11 @@ impl VmStatusRunning {
                             && size > 0
                         {
                             // Align the base address and length to 4K boundaries.
-                            pt_dev_region
-                                .push((align_down_4k(reg.address as _), align_up_4k(size as _)));
+                            pt_dev_region.push((
+                                align_down_4k(reg.address as _),
+                                align_up_4k(size as _),
+                                name.clone(),
+                            ));
                         }
                     }
                 }
@@ -310,52 +317,18 @@ impl VmStatusRunning {
                     && let Some(ranges) = pci.ranges()
                 {
                     for range in ranges {
-                        if range.size > 0
-                        {
+                        if range.size > 0 {
                             // Align the base address and length to 4K boundaries.
                             pt_dev_region.push((
                                 align_down_4k(range.cpu_address as _),
                                 align_up_4k(range.size as _),
+                                name.clone(),
                             ));
                         }
                     }
                 }
             }
-            pt_dev_region.sort_by_key(|(gpa, _)| *gpa);
-
-            // Merge overlapping regions.
-            let pt_dev_region = pt_dev_region.into_iter().fold(
-                Vec::<(usize, usize)>::new(),
-                |mut acc, (gpa, len)| {
-                    if let Some(last) = acc.last_mut() {
-                        if last.0 + last.1 >= gpa {
-                            // Merge with the last region.
-                            last.1 = (last.0 + last.1).max(gpa + len) - last.0;
-                        } else {
-                            acc.push((gpa, len));
-                        }
-                    } else {
-                        acc.push((gpa, len));
-                    }
-                    acc
-                },
-            );
-
-            for (gpa, len) in &pt_dev_region {
-                self.data
-                    .addrspace
-                    .lock()
-                    .map_linear(
-                        (*gpa).into(),
-                        (*gpa).into(),
-                        *len,
-                        MappingFlags::DEVICE
-                            | MappingFlags::READ
-                            | MappingFlags::WRITE
-                            | MappingFlags::USER,
-                    )
-                    .map_err(|e| anyhow!("{e}"))?;
-            }
+            pt_dev_region.sort_by_key(|(gpa, ..)| *gpa);
 
             let root_address_cells = fdt.root().address_cells().unwrap_or(2);
             let root_size_cells = fdt.root().size_cells().unwrap_or(2);
@@ -379,6 +352,41 @@ impl VmStatusRunning {
 
             let f = fdt_edit::Fdt::from_bytes(&dtb_data).unwrap();
             debug!("Generated DTB:\n{f}");
+
+            // Merge overlapping regions.
+            let pt_dev_region = pt_dev_region.into_iter().fold(
+                Vec::<(usize, usize, String)>::new(),
+                |mut acc, (gpa, len, name)| {
+                    if let Some(last) = acc.last_mut() {
+                        let last_name = last.2.clone();
+                        if last.0 + last.1 >= gpa {
+                            // Merge with the last region.
+                            last.1 = (last.0 + last.1).max(gpa + len) - last.0;
+                        } else {
+                            acc.push((gpa, len, last_name));
+                        }
+                    } else {
+                        acc.push((gpa, len, name));
+                    }
+                    acc
+                },
+            );
+
+            for (gpa, len, name) in &pt_dev_region {
+                self.data
+                    .addrspace
+                    .lock()
+                    .map_linear(
+                        (*gpa).into(),
+                        (*gpa).into(),
+                        *len,
+                        MappingFlags::DEVICE
+                            | MappingFlags::READ
+                            | MappingFlags::WRITE
+                            | MappingFlags::USER,
+                    )
+                    .map_err(|e| anyhow!("`{name}` map fail:\n {e}"))?;
+            }
 
             let mut guest_mem = self.data.memories().into_iter().next().unwrap();
             let mut dtb_start =
