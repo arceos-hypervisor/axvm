@@ -1,35 +1,26 @@
 use alloc::vec::Vec;
+use fdt_edit::{Fdt, Status};
 
-pub(crate) fn fdt_edit() -> Option<fdt_edit::Fdt> {
+pub(crate) fn fdt_edit() -> Option<Fdt> {
     let addr = axhal::get_bootarg();
     if addr == 0 {
         return None;
     }
-    let fdt = unsafe { fdt_edit::Fdt::from_ptr(addr as *mut u8).ok()? };
-    Some(fdt)
-}
-
-pub(crate) fn fdt() -> Option<fdt_parser::Fdt> {
-    let addr = axhal::get_bootarg();
-    if addr == 0 {
-        return None;
-    }
-    let fdt = unsafe { fdt_parser::Fdt::from_ptr(addr as *mut u8).ok()? };
+    let fdt = unsafe { Fdt::from_ptr(addr as *mut u8).ok()? };
     Some(fdt)
 }
 
 pub fn cpu_list() -> Option<Vec<usize>> {
-    let fdt = fdt()?;
+    let fdt = fdt_edit()?;
 
-    let nodes = fdt.find_nodes("/cpus/cpu");
-    let cpus = nodes
-        .into_iter()
+    let cpus = fdt
+        .find_by_path("/cpus/cpu")
         .filter(|node| node.name().contains("cpu@"))
-        .filter(|node| !matches!(node.status(), Some(fdt_parser::Status::Disabled)))
+        .filter(|node| !matches!(node.status(), Some(Status::Disabled)))
         .map(|node| {
             let reg = node
-                .reg()
-                .unwrap_or_else(|_| panic!("cpu {} reg not found", node.name()))[0];
+                .regs()
+                .unwrap_or_else(|| panic!("cpu {} reg not found", node.name()))[0];
             reg.address as usize
         })
         .collect();
