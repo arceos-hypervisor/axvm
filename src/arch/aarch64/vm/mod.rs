@@ -12,7 +12,7 @@ use memory_addr::{MemoryAddr, align_down_4k, align_up_4k};
 mod init;
 
 use crate::{
-    GuestPhysAddr, RunError, TASK_STACK_SIZE, VmData, VmStatusInitOps, VmStatusRunningOps,
+    GuestPhysAddr, RunError, TASK_STACK_SIZE, Vm, VmData, VmStatusInitOps, VmStatusRunningOps,
     VmStatusStoppingOps,
     arch::cpu::VCpu,
     config::{AxVMConfig, MemoryKind},
@@ -56,6 +56,15 @@ pub struct VmStatusRunning {
 }
 
 impl VmStatusRunning {
+    pub(crate) fn new(data: VmData, vcpus: Vec<VCpu>) -> Self {
+        Self {
+            vcpus,
+            data,
+            dtb_addr: GuestPhysAddr::from_usize(0),
+            vcpu_running_count: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
     fn make_dtb(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
         let flags =
             MappingFlags::READ | MappingFlags::WRITE | MappingFlags::WRITE | MappingFlags::USER;
