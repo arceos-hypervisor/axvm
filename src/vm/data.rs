@@ -1,4 +1,4 @@
-use core::alloc::Layout;
+use core::{alloc::Layout, any};
 use std::{
     sync::{Arc, Mutex},
     vec::Vec,
@@ -171,6 +171,10 @@ impl VmData {
             .map(|m| (m.gpa(), m.size()))
             .collect()
     }
+
+    pub fn map_passthrough_regions(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -180,6 +184,8 @@ struct SharedData {
     kernel_region_index: usize,
     kernel_entry: GuestPhysAddr,
 }
+
+impl SharedData {}
 
 pub struct GuestMemory {
     gpa: GuestPhysAddr,
