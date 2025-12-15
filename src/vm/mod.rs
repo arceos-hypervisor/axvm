@@ -8,6 +8,7 @@ use crate::{AxVMConfig, arch::VmInit};
 
 mod data;
 mod machine;
+// mod addrspace;
 pub(crate) use data::*;
 use machine::*;
 
