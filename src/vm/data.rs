@@ -210,6 +210,7 @@ impl VmData {
                 MappingFlags::READ
                     | MappingFlags::WRITE
                     | MappingFlags::EXECUTE
+                    | MappingFlags::DEVICE
                     | MappingFlags::USER,
             )
             .map_err(|e| {
