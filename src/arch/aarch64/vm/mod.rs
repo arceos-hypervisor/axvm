@@ -16,6 +16,7 @@ use crate::{
     VmStatusStoppingOps,
     arch::cpu::VCpu,
     config::{AxVMConfig, MemoryKind},
+    vhal::cpu::CpuHardId,
     vm::{MappingFlags, VmId},
 };
 
@@ -100,6 +101,24 @@ impl VmStatusRunning {
                 config.name()
             );
             let mut fdt = crate::fdt::fdt_edit().expect("Need fdt");
+
+            let mut rm_nodes = vec![];
+            let vcpu_hard_ls = self.vcpus.iter().map(|v| v.id).collect::<Vec<_>>();
+            for cpu in fdt.find_by_path("/cpus/cpu") {
+                if let Some(id) = cpu.regs() {
+                    let id = CpuHardId::new(id[0].address as usize);
+                    if vcpu_hard_ls.contains(&id) {
+                        continue;
+                    }
+                }
+
+                rm_nodes.push(cpu.path());
+            }
+
+            for path in rm_nodes {
+                fdt.remove_node(&path).unwrap();
+            }
+
             let nodes = fdt
                 .find_by_path("/memory")
                 .into_iter()
@@ -108,46 +127,6 @@ impl VmStatusRunning {
             for path in nodes {
                 let _ = fdt.remove_node(&path);
             }
-
-            let mut pt_dev_region = vec![];
-
-            for node in fdt.all_nodes() {
-                if matches!(node.status(), Some(fdt_edit::Status::Disabled)) {
-                    continue;
-                }
-                let name = node.name().to_string();
-
-                if let Some(regs) = node.regs() {
-                    for reg in regs {
-                        if let Some(size) = reg.size
-                            && size > 0
-                        {
-                            // Align the base address and length to 4K boundaries.
-                            pt_dev_region.push((
-                                align_down_4k(reg.address as _),
-                                align_up_4k(size as _),
-                                name.clone(),
-                            ));
-                        }
-                    }
-                }
-
-                if let NodeRef::Pci(pci) = &node
-                    && let Some(ranges) = pci.ranges()
-                {
-                    for range in ranges {
-                        if range.size > 0 {
-                            // Align the base address and length to 4K boundaries.
-                            pt_dev_region.push((
-                                align_down_4k(range.cpu_address as _),
-                                align_up_4k(range.size as _),
-                                name.clone(),
-                            ));
-                        }
-                    }
-                }
-            }
-            pt_dev_region.sort_by_key(|(gpa, ..)| *gpa);
 
             let root_address_cells = fdt.root().address_cells().unwrap_or(2);
             let root_size_cells = fdt.root().size_cells().unwrap_or(2);
@@ -171,41 +150,6 @@ impl VmStatusRunning {
 
             let f = fdt_edit::Fdt::from_bytes(&dtb_data).unwrap();
             debug!("Generated DTB:\n{f}");
-
-            // Merge overlapping regions.
-            let pt_dev_region = pt_dev_region.into_iter().fold(
-                Vec::<(usize, usize, String)>::new(),
-                |mut acc, (gpa, len, name)| {
-                    if let Some(last) = acc.last_mut() {
-                        let last_name = last.2.clone();
-                        if last.0 + last.1 >= gpa {
-                            // Merge with the last region.
-                            last.1 = (last.0 + last.1).max(gpa + len) - last.0;
-                        } else {
-                            acc.push((gpa, len, last_name));
-                        }
-                    } else {
-                        acc.push((gpa, len, name));
-                    }
-                    acc
-                },
-            );
-
-            // for (gpa, len, name) in &pt_dev_region {
-            //     self.data
-            //         .addrspace
-            //         .lock()
-            //         .map_linear(
-            //             (*gpa).into(),
-            //             (*gpa).into(),
-            //             *len,
-            //             MappingFlags::DEVICE
-            //                 | MappingFlags::READ
-            //                 | MappingFlags::WRITE
-            //                 | MappingFlags::USER,
-            //         )
-            //         .map_err(|e| anyhow!("`{name}` map [{:#x}, {:#x}) fail:\n {e}", *gpa, len))?;
-            // }
 
             let mut guest_mem = self.data.memories().into_iter().next().unwrap();
             let mut dtb_start =

@@ -23,7 +23,7 @@ impl HCpuExclusive {
         match id {
             Some(id) => {
                 // Try to allocate the specific ID
-                let raw = a.alloc_contiguous(Some(id.raw()), 1, 1)?;
+                let raw = a.alloc_contiguous(Some(id.raw()), 1, 0)?;
                 Some(HCpuExclusive(CpuId::new(raw)))
             }
             None => {
