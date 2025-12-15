@@ -191,21 +191,21 @@ impl VmStatusRunning {
                 },
             );
 
-            for (gpa, len, name) in &pt_dev_region {
-                self.data
-                    .addrspace
-                    .lock()
-                    .map_linear(
-                        (*gpa).into(),
-                        (*gpa).into(),
-                        *len,
-                        MappingFlags::DEVICE
-                            | MappingFlags::READ
-                            | MappingFlags::WRITE
-                            | MappingFlags::USER,
-                    )
-                    .map_err(|e| anyhow!("`{name}` map [{:#x}, {:#x}) fail:\n {e}", *gpa, len))?;
-            }
+            // for (gpa, len, name) in &pt_dev_region {
+            //     self.data
+            //         .addrspace
+            //         .lock()
+            //         .map_linear(
+            //             (*gpa).into(),
+            //             (*gpa).into(),
+            //             *len,
+            //             MappingFlags::DEVICE
+            //                 | MappingFlags::READ
+            //                 | MappingFlags::WRITE
+            //                 | MappingFlags::USER,
+            //         )
+            //         .map_err(|e| anyhow!("`{name}` map [{:#x}, {:#x}) fail:\n {e}", *gpa, len))?;
+            // }
 
             let mut guest_mem = self.data.memories().into_iter().next().unwrap();
             let mut dtb_start =

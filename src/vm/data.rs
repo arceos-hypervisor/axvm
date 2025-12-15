@@ -60,6 +60,12 @@ impl VmData {
         self.shared.lock().reserved_memories.push(r);
     }
 
+    pub(crate) fn memory_map_add_region(&self, region: VmRegion) -> anyhow::Result<()> {
+        let mut s = self.shared.lock();
+        s.memory_map.add(region).unwrap();
+        Ok(())
+    }
+
     pub fn new_memory(&self, kind: &MemoryKind, flags: MappingFlags) -> GuestMemory {
         let _gpa;
         let _size;
@@ -102,6 +108,13 @@ impl VmData {
                     .unwrap();
             }
         }
+
+        self.memory_map_add_region(VmRegion {
+            gpa: _gpa,
+            size: _size,
+            kind: VmRegionKind::Memory,
+        })
+        .unwrap();
 
         GuestMemory {
             gpa: _gpa,
@@ -183,6 +196,31 @@ impl VmData {
     }
 
     pub fn map_passthrough_regions(&self) -> anyhow::Result<()> {
+        let s = self.shared.lock();
+        let mut g = self.addrspace.lock();
+        for region in s
+            .memory_map
+            .iter()
+            .filter(|m| m.kind == VmRegionKind::Passthrough)
+        {
+            g.map_linear(
+                region.gpa.as_usize().into(),
+                region.gpa.as_usize().into(),
+                region.size.align_up_4k(),
+                MappingFlags::READ
+                    | MappingFlags::WRITE
+                    | MappingFlags::EXECUTE
+                    | MappingFlags::USER,
+            )
+            .map_err(|e| {
+                anyhow!(
+                    "Failed to map passthrough region: [{:?}, {:?})\n {e:?}",
+                    region.gpa,
+                    region.gpa + region.size
+                )
+            })?;
+        }
+
         Ok(())
     }
 }
