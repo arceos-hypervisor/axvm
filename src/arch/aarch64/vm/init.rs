@@ -69,6 +69,8 @@ impl VmInit {
         run_data.data.load_kernel_image(&config)?;
         run_data.make_dtb(&config)?;
 
+        run_data.data.map_passthrough_regions()?;
+
         let kernel_entry = run_data.data.kernel_entry();
         let gpt_root = run_data.data.gpt_root();
 
