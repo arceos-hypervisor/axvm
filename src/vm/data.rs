@@ -1,4 +1,4 @@
-use core::{alloc::Layout, any};
+use core::{alloc::Layout, ops::Range};
 use std::{
     sync::{Arc, Mutex},
     vec::Vec,
@@ -7,18 +7,17 @@ use std::{
 pub use axaddrspace::MappingFlags;
 use memory_addr::MemoryAddr;
 
-use crate::vhal::ArchHal;
 use crate::{
     AxVMConfig, GuestPhysAddr, HostPhysAddr, HostVirtAddr,
     config::MemoryKind,
     vhal::{phys_to_virt, virt_to_phys},
+    vm::addrspace::{VmRegion, VmRegionKind},
 };
+use crate::{vhal::ArchHal, vm::addrspace::VmRegionMap};
 
-const VM_ASPACE_BASE: usize = 0x0;
-const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
 const ALIGN: usize = 1024 * 1024 * 2;
 
-type AddrSpace = axaddrspace::AddrSpace<axhal::paging::PagingHandlerImpl>;
+use super::addrspace::AddrSpace;
 
 #[derive(Clone)]
 pub struct VmData {
@@ -27,17 +26,28 @@ pub struct VmData {
 }
 
 impl VmData {
-    pub fn new(gpt_levels: usize) -> anyhow::Result<Self> {
+    pub fn new(gpt_levels: usize, vm_addr_space: Range<GuestPhysAddr>) -> anyhow::Result<Self> {
+        let mut memory_map = VmRegionMap::new(Vec::new());
+        let vm_space_size = vm_addr_space.end.as_usize() - vm_addr_space.start.as_usize();
+        memory_map.add(VmRegion {
+            gpa: vm_addr_space.start,
+            size: vm_space_size,
+            kind: VmRegionKind::Passthrough,
+        });
+
         // Create address space for the VM
         let address_space = AddrSpace::new_empty(
             gpt_levels,
-            axaddrspace::GuestPhysAddr::from(VM_ASPACE_BASE),
-            VM_ASPACE_SIZE,
+            vm_addr_space.start.as_usize().into(),
+            vm_space_size,
         )
         .map_err(|e| anyhow!("Failed to create address space: {e:?}"))?;
         Ok(Self {
             addrspace: Arc::new(Mutex::new(address_space)),
-            shared: Arc::new(Mutex::new(SharedData::default())),
+            shared: Arc::new(Mutex::new(SharedData {
+                memory_map,
+                ..Default::default()
+            })),
         })
     }
 
@@ -183,6 +193,7 @@ struct SharedData {
     reserved_memories: Vec<GuestMemory>,
     kernel_region_index: usize,
     kernel_entry: GuestPhysAddr,
+    memory_map: VmRegionMap,
 }
 
 impl SharedData {}

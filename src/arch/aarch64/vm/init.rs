@@ -16,6 +16,11 @@ use crate::{
     vm::{MappingFlags, VmId},
 };
 
+const VM_ASPACE_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0);
+const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
+const VM_ASPACE_END: GuestPhysAddr =
+    GuestPhysAddr::from_usize(VM_ASPACE_BASE.as_usize() + VM_ASPACE_SIZE);
+
 pub struct VmInit {
     pub id: VmId,
     pub name: String,
@@ -41,48 +46,12 @@ impl VmInit {
     pub fn init(&mut self, config: AxVMConfig) -> anyhow::Result<()> {
         debug!("Initializing VM {} ({})", self.id, self.name);
 
-        // Create vCPUs
-        let mut vcpus = Vec::new();
+        let vcpus = self.new_vcpus(&config)?;
 
-        let dtb_addr = GuestPhysAddr::from_usize(0);
-
-        match config.cpu_num {
-            crate::config::CpuNumType::Alloc(num) => {
-                for _ in 0..num {
-                    let vcpu = VCpu::new(None, dtb_addr)?;
-                    debug!("Created vCPU with {:?}", vcpu.id);
-                    vcpus.push(vcpu);
-                }
-            }
-            crate::config::CpuNumType::Fixed(ref ids) => {
-                for id in ids {
-                    let vcpu = VCpu::new(Some(*id), dtb_addr)?;
-                    debug!("Created vCPU with {:?}", vcpu.id);
-                    vcpus.push(vcpu);
-                }
-            }
-        }
-
-        let vcpu_count = vcpus.len();
-
-        for vcpu in &vcpus {
-            let max_levels = vcpu.with_hcpu(|cpu| cpu.max_guest_page_table_levels());
-            if max_levels < self.pt_levels {
-                self.pt_levels = max_levels;
-            }
-        }
-
-        debug!(
-            "VM {} ({}) vCPU count: {}, Max Guest Page Table Levels: {}",
-            self.id, self.name, vcpu_count, self.pt_levels
-        );
-
-        let mut run_data = VmStatusRunning {
+        let mut run_data = VmStatusRunning::new(
+            VmData::new(self.pt_levels, VM_ASPACE_BASE..VM_ASPACE_END)?,
             vcpus,
-            data: VmData::new(self.pt_levels)?,
-            dtb_addr: GuestPhysAddr::from_usize(0),
-            vcpu_running_count: Arc::new(AtomicUsize::new(0)),
-        };
+        );
 
         debug!("Mapping memory regions for VM {} ({})", self.id, self.name);
         for memory_cfg in &config.memory_regions {
@@ -130,6 +99,45 @@ impl VmInit {
         self.run_data = Some(run_data);
 
         Ok(())
+    }
+
+    fn new_vcpus(&mut self, config: &AxVMConfig) -> anyhow::Result<Vec<VCpu>> {
+        // Create vCPUs
+        let mut vcpus = Vec::new();
+
+        let dtb_addr = GuestPhysAddr::from_usize(0);
+
+        match config.cpu_num {
+            crate::config::CpuNumType::Alloc(num) => {
+                for _ in 0..num {
+                    let vcpu = VCpu::new(None, dtb_addr)?;
+                    debug!("Created vCPU with {:?}", vcpu.id);
+                    vcpus.push(vcpu);
+                }
+            }
+            crate::config::CpuNumType::Fixed(ref ids) => {
+                for id in ids {
+                    let vcpu = VCpu::new(Some(*id), dtb_addr)?;
+                    debug!("Created vCPU with {:?}", vcpu.id);
+                    vcpus.push(vcpu);
+                }
+            }
+        }
+
+        let vcpu_count = vcpus.len();
+
+        for vcpu in &vcpus {
+            let max_levels = vcpu.with_hcpu(|cpu| cpu.max_guest_page_table_levels());
+            if max_levels < self.pt_levels {
+                self.pt_levels = max_levels;
+            }
+        }
+
+        debug!(
+            "VM {} ({}) vCPU count: {}, Max Guest Page Table Levels: {}",
+            self.id, self.name, vcpu_count, self.pt_levels
+        );
+        Ok(vcpus)
     }
 }
 
