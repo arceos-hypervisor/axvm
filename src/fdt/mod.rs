@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use fdt_edit::{Fdt, Status};
 
 pub(crate) fn fdt_edit() -> Option<Fdt> {
-    let addr = axhal::get_bootarg();
+    let addr = axhal::dtb::get_bootarg();
     if addr == 0 {
         return None;
     }
