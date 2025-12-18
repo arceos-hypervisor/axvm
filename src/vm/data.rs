@@ -33,7 +33,7 @@ impl VmData {
             gpa: vm_addr_space.start,
             size: vm_space_size,
             kind: VmRegionKind::Passthrough,
-        });
+        })?;
 
         // Create address space for the VM
         let address_space = AddrSpace::new_empty(

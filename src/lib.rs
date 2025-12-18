@@ -14,9 +14,6 @@
 
 #![no_std]
 #![feature(new_range_api)]
-// #![feature(concat_idents)]
-// #![feature(naked_functions)]
-// #![feature(const_trait_impl)]
 
 //! This crate provides a minimal VM monitor (VMM) for running guest VMs.
 //!
