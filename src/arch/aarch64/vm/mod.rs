@@ -1,13 +1,9 @@
 use alloc::{string::String, sync::Arc, vec::Vec};
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::{
-    os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
-    string::ToString,
-};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use arm_vcpu::Aarch64VCpuSetupConfig;
 use fdt_edit::{Node, NodeRef, Property, RegInfo};
-use memory_addr::{MemoryAddr, align_down_4k, align_up_4k};
+use memory_addr::MemoryAddr;
 
 mod init;
 
