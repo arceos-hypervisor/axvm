@@ -2,11 +2,11 @@ use alloc::string::String;
 
 use crate::GuestPhysAddr;
 
-mod init;
+mod inited;
 mod running;
 mod unint;
 
-pub(crate) use init::*;
+pub(crate) use inited::*;
 pub(crate) use running::*;
 pub(crate) use unint::*;
 

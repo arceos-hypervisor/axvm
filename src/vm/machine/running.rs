@@ -1,0 +1,94 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    collections::btree_map::BTreeMap,
+    os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
+    sync::Arc,
+};
+
+use alloc::vec::Vec;
+
+use crate::{
+    RunError, TASK_STACK_SIZE, VmAddrSpace, arch::cpu::VCpu, data::VmDataWeak, vhal::cpu::CpuHardId,
+};
+
+pub struct VmMachineRunningCommon {
+    pub cpus: BTreeMap<CpuHardId, VCpu>,
+    pub vmspace: VmAddrSpace,
+    pub vm: VmDataWeak,
+    running_cpu_count: Arc<AtomicUsize>,
+}
+
+impl VmMachineRunningCommon {
+    pub fn new(vmspace: VmAddrSpace, vcpu: Vec<VCpu>, vm: VmDataWeak) -> Self {
+        let mut cpus = BTreeMap::new();
+        for cpu in vcpu.into_iter() {
+            cpus.insert(cpu.hard_id(), cpu);
+        }
+
+        VmMachineRunningCommon {
+            vmspace,
+            cpus,
+            vm,
+            running_cpu_count: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn take_cpu(&mut self) -> anyhow::Result<VCpu> {
+        let next = self
+            .cpus
+            .keys()
+            .next()
+            .cloned()
+            .ok_or_else(|| anyhow!("No CPUs available"))?;
+        let cpu = self.cpus.remove(&next).unwrap();
+        Ok(cpu)
+    }
+
+    pub fn run_cpu(&mut self, mut cpu: VCpu) -> anyhow::Result<()> {
+        let waiter = self.new_waiter();
+
+        let bind_id = cpu.bind_id();
+        std::thread::Builder::new()
+            .name(format!("init-cpu-{}", bind_id))
+            .stack_size(TASK_STACK_SIZE)
+            .spawn(move || {
+                // Initialize cpu affinity here.
+                assert!(
+                    set_current_affinity(AxCpuMask::one_shot(bind_id.raw())),
+                    "Initialize CPU affinity failed!"
+                );
+                info!("Starting VCpu {} on {}", cpu.hard_id(), bind_id);
+                let res = cpu.run();
+                if let Err(e) = res {
+                    if let Some(vm) = waiter.vm.upgrade() {
+                        vm.set_err(RunError::ExitWithError(e));
+                    }
+                }
+                waiter.running_cpu_count.fetch_sub(1, Ordering::SeqCst);
+                if waiter.running_cpu_count.load(Ordering::SeqCst) == 0 {
+                    waiter.vm.set_stopped();
+                }
+            })
+            .map_err(|e| anyhow!("{e:?}"))?;
+
+        Ok(())
+    }
+
+    fn new_waiter(&self) -> Waiter {
+        let running_cpu_count = self.running_cpu_count.clone();
+        running_cpu_count.fetch_add(1, Ordering::SeqCst);
+        Waiter {
+            running_cpu_count,
+            vm: self.vm.clone(),
+        }
+    }
+
+    pub fn vmspace(&self) -> &VmAddrSpace {
+        &self.vmspace
+    }
+}
+
+struct Waiter {
+    running_cpu_count: Arc<AtomicUsize>,
+    vm: VmDataWeak,
+}

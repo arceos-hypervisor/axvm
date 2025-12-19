@@ -1,15 +1,16 @@
 use fdt_edit::NodeRef;
 
-use crate::{VmMachineRunningOps, VmMachineStoppingOps, arch::vm::DevMapConfig};
+use crate::{
+    VmAddrSpace, VmMachineRunningCommon, VmMachineRunningOps, VmMachineStoppingOps,
+    arch::vm::DevMapConfig,
+};
 
 /// Data needed when VM is running
-pub struct VmMachineRunning {}
+pub struct VmMachineRunning {
+    pub(super) common: VmMachineRunningCommon,
+}
 
 impl VmMachineRunning {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-
     fn handle_node_regs(dev_vec: &mut [DevMapConfig], node: &NodeRef<'_>) {}
 }
 

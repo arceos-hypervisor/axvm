@@ -8,7 +8,7 @@ use std::{
 use arm_vcpu::Aarch64VCpuSetupConfig;
 
 use crate::{
-    GuestPhysAddr, TASK_STACK_SIZE, VmAddrSpace, VmMachineInitedOps,
+    GuestPhysAddr, TASK_STACK_SIZE, VmAddrSpace, VmMachineInitedOps, VmMachineRunningCommon,
     arch::{VmMachineRunning, cpu::VCpu},
     config::AxVMConfig,
     data::VmDataWeak,
@@ -40,15 +40,17 @@ impl VmMachineInitedOps for VmMachineInited {
         &self.name
     }
 
-    fn start(self, vmdata: VmDataWeak) -> Result<Self::Running, (anyhow::Error, Self)> {
+    fn start(self, vmdata: VmDataWeak) -> Result<Self::Running, anyhow::Error> {
         debug!("Starting VM {} ({})", self.id, self.name);
-        let running = VmMachineRunning::new();
-        info!(
-            "VM {} ({}) with {} cpus booted successfully.",
-            self.id,
-            self.name,
-            self.vcpus.len()
-        );
+        let mut running = VmMachineRunning {
+            common: VmMachineRunningCommon::new(self.vmspace, self.vcpus, vmdata),
+        };
+
+        let main = running.common.take_cpu()?;
+
+        running.common.run_cpu(main)?;
+
+        info!("VM {} ({}) main cpu started.", self.id, self.name,);
         Ok(running)
     }
 }
