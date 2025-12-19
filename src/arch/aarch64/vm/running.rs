@@ -18,10 +18,14 @@ impl VmMachineRunningOps for VmMachineRunning {
     type Stopping = VmStatusStopping;
 
     fn stop(self) -> Self::Stopping {
-        Self::Stopping {}
+        Self::Stopping {
+            vmspace: self.common.vmspace,
+        }
     }
 }
 
-pub struct VmStatusStopping {}
+pub struct VmStatusStopping {
+    vmspace: VmAddrSpace,
+}
 
 impl VmMachineStoppingOps for VmStatusStopping {}

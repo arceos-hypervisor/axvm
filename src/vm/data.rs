@@ -41,6 +41,7 @@ impl VmDataInner {
             VmMachineState::Running(running) => {
                 let stopping = running.stop();
                 *status_guard = VmMachineState::Stopping(stopping);
+                self.status.store(VMStatus::Stopping);
                 Ok(())
             }
             other => {
@@ -51,7 +52,7 @@ impl VmDataInner {
     }
 
     pub fn wait(&self) -> anyhow::Result<()> {
-        while self.is_active() {
+        while !matches!(self.status(), VMStatus::Stopped) {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         self.run_result()
