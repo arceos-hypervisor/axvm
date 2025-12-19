@@ -1,5 +1,4 @@
-use core::{fmt::Display, ops::Deref, sync::atomic::AtomicBool};
-use std::sync::Arc;
+use core::{fmt::Display, ops::Deref};
 
 use aarch64_cpu::registers::*;
 use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
@@ -11,7 +10,7 @@ use crate::{
     vcpu::{VCpuCommon, VCpuOp},
     vhal::{
         ArchCpuData,
-        cpu::{CpuHardId, CpuId, HCpuExclusive},
+        cpu::{CpuHardId, CpuId},
     },
 };
 
@@ -79,28 +78,6 @@ impl arm_vcpu::CpuHal for VCpuHal {
 
     fn inject_interrupt(&self, irq: usize) {
         todo!()
-    }
-}
-
-#[derive(Clone)]
-pub struct VCpuHandle {
-    is_active: Arc<AtomicBool>,
-}
-
-impl VCpuHandle {
-    pub fn new() -> Self {
-        VCpuHandle {
-            is_active: Arc::new(AtomicBool::new(true)),
-        }
-    }
-
-    pub fn stop(&self) {
-        self.is_active
-            .store(false, core::sync::atomic::Ordering::Release);
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.is_active.load(core::sync::atomic::Ordering::Acquire)
     }
 }
 

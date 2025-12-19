@@ -11,8 +11,7 @@ use spin::RwLock;
 
 use crate::{
     AxVMConfig, RunError, VmId, VmMachineInitedOps, VmMachineRunningOps, VmMachineUninitOps,
-    arch::{VmMachineInited, VmMachineRunning, VmMachineUninit},
-    config::AxVCpuConfig,
+    arch::{VmMachineRunning, VmMachineUninit},
     vm::machine::{AtomicState, VMStatus, VmMachineState},
 };
 
@@ -75,7 +74,7 @@ impl VmDataInner {
     }
 
     pub(crate) fn run_result(&self) -> anyhow::Result<()> {
-        let mut guard = self.error.write();
+        let guard = self.error.read();
         let res = guard.clone();
         match res {
             Some(err) => match err {

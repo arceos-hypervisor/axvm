@@ -1,4 +1,4 @@
-use core::{ops::Deref, sync::atomic::Ordering};
+use core::ops::Deref;
 
 use alloc::vec::Vec;
 use arm_vcpu::Aarch64VCpuSetupConfig;
@@ -99,7 +99,7 @@ impl VmMachineUninit {
             self.config.id, self.config.name
         );
         for memory_cfg in &self.config.memory_regions {
-            let m = vmspace.new_memory(memory_cfg);
+            vmspace.new_memory(memory_cfg)?;
         }
 
         vmspace.load_kernel_image(&self.config)?;
