@@ -91,8 +91,8 @@ impl AxVMConfig {
     }
 
     /// Returns VM name.
-    pub fn name(&self) -> String {
-        self.name.clone()
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Returns configurations related to VM image load addresses.
