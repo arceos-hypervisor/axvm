@@ -6,8 +6,9 @@ use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
 use axvm_types::addr::*;
 
 use crate::{
+    RunError,
     data::VmDataWeak,
-    vcpu::VCpuCommon,
+    vcpu::{VCpuCommon, VCpuOp},
     vhal::{
         ArchCpuData,
         cpu::{CpuHardId, CpuId, HCpuExclusive},
@@ -125,8 +126,18 @@ impl VCpu {
         .unwrap();
         Ok(VCpu { vcpu, common })
     }
+}
 
-    pub fn run(&mut self) -> anyhow::Result<()> {
+impl VCpuOp for VCpu {
+    fn bind_id(&self) -> CpuId {
+        self.common.bind_id()
+    }
+
+    fn hard_id(&self) -> CpuHardId {
+        self.common.hard_id()
+    }
+
+    fn run(&mut self) -> Result<(), RunError> {
         info!("Starting vCPU {}", self.bind_id());
 
         while self.is_active() {

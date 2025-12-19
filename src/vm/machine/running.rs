@@ -8,7 +8,8 @@ use std::{
 use alloc::vec::Vec;
 
 use crate::{
-    RunError, TASK_STACK_SIZE, VmAddrSpace, arch::cpu::VCpu, data::VmDataWeak, vhal::cpu::CpuHardId,
+    RunError, TASK_STACK_SIZE, VmAddrSpace, arch::cpu::VCpu, data::VmDataWeak, vcpu::VCpuOp,
+    vhal::cpu::CpuHardId,
 };
 
 pub struct VmMachineRunningCommon {
@@ -44,7 +45,7 @@ impl VmMachineRunningCommon {
         Ok(cpu)
     }
 
-    pub fn run_cpu(&mut self, mut cpu: VCpu) -> anyhow::Result<()> {
+    pub fn run_cpu<C: VCpuOp>(&mut self, mut cpu: C) -> anyhow::Result<()> {
         let waiter = self.new_waiter();
 
         let bind_id = cpu.bind_id();
@@ -61,7 +62,7 @@ impl VmMachineRunningCommon {
                 let res = cpu.run();
                 if let Err(e) = res {
                     if let Some(vm) = waiter.vm.upgrade() {
-                        vm.set_err(RunError::ExitWithError(e));
+                        vm.set_err(e);
                     }
                 }
                 waiter.running_cpu_count.fetch_sub(1, Ordering::SeqCst);
