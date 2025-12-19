@@ -12,6 +12,7 @@ pub struct VmMachineRunning {
 
 impl VmMachineRunning {
     fn handle_node_regs(dev_vec: &mut [DevMapConfig], node: &NodeRef<'_>) {}
+
     pub fn cpu_up(
         &mut self,
         target_cpu: CpuHardId,
@@ -25,7 +26,7 @@ impl VmMachineRunning {
             .ok_or(anyhow!("No cpu {target_cpu} found"))?;
 
         cpu.vcpu.set_entry(entry_point.as_usize().into()).unwrap();
-        cpu.vcpu.ctx_mut().gpr[0] = arg;
+        cpu.vcpu.set_gpr(0, arg as _);
 
         self.common.run_cpu(cpu)?;
         Ok(())
