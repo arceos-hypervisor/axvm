@@ -136,12 +136,18 @@ impl VCpuOp for VCpu {
                 arm_vcpu::AxVCpuExitReason::MmioWrite { addr, width, data } => todo!(),
                 arm_vcpu::AxVCpuExitReason::SysRegRead { addr, reg } => todo!(),
                 arm_vcpu::AxVCpuExitReason::SysRegWrite { addr, value } => todo!(),
-                arm_vcpu::AxVCpuExitReason::ExternalInterrupt => todo!(),
+                arm_vcpu::AxVCpuExitReason::ExternalInterrupt => {
+                    axhal::irq::irq_handler(0);
+                }
                 arm_vcpu::AxVCpuExitReason::CpuUp {
                     target_cpu,
                     entry_point,
                     arg,
-                } => todo!(),
+                } => {
+                    self.vm()?.with_machine_running_mut(|running| {
+                        running.cpu_up(CpuHardId::new(target_cpu as _), entry_point, arg)
+                    })??;
+                }
                 arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
                 arm_vcpu::AxVCpuExitReason::SystemDown => {
                     info!("vCPU {} requested system shutdown", self.bind_id());
