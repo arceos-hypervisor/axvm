@@ -118,6 +118,7 @@ impl VCpuOp for VCpu {
         info!("Starting vCPU {}", self.bind_id());
 
         while self.is_active() {
+            debug!("vCPU {} entering guest", self.bind_id());
             let exit_reason = self.vcpu.run().map_err(|e| anyhow!("{e}"))?;
             debug!(
                 "vCPU {} exited with reason: {:?}",
