@@ -27,7 +27,7 @@ impl VmMachineRunning {
 
         cpu.vcpu.set_entry(entry_point.as_usize().into()).unwrap();
         cpu.vcpu.set_gpr(0, arg as _);
-
+        debug!("{:?}", cpu.vcpu);
         self.common.run_cpu(cpu)?;
         Ok(())
     }
