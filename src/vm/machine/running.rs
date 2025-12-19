@@ -67,6 +67,7 @@ impl VmMachineRunningCommon {
                 }
                 waiter.running_cpu_count.fetch_sub(1, Ordering::SeqCst);
                 if waiter.running_cpu_count.load(Ordering::SeqCst) == 0 {
+                    info!("All vCPUs have exited, VM set stopped.");
                     waiter.vm.set_stopped();
                 }
             })
