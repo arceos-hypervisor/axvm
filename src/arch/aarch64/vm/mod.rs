@@ -6,17 +6,20 @@ use fdt_edit::{Node, NodeRef, Property, RegInfo};
 use memory_addr::MemoryAddr;
 
 mod init;
+mod unint;
 
 use crate::{
-    GuestPhysAddr, RunError, TASK_STACK_SIZE, Vm, VmData, VmStatusInitOps, VmStatusRunningOps,
-    VmStatusStoppingOps,
+    GuestPhysAddr, RunError, TASK_STACK_SIZE, Vm, VmDataWeak, VmRunCommonData, VmStatusInitOps,
+    VmStatusRunningOps, VmStatusStoppingOps,
     arch::cpu::VCpu,
     config::{AxVMConfig, MemoryKind},
+    data2::VmDataWeak,
     vhal::cpu::CpuHardId,
     vm::{MappingFlags, VmId},
 };
 
-pub use init::VmInit;
+pub(crate) use init::*;
+pub(crate) use unint::*;
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -24,19 +27,8 @@ const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
 impl VmStatusRunningOps for VmStatusRunning {
     type Stopping = VmStatusStopping;
 
-    fn stop(self) -> Result<Self::Stopping, (anyhow::Error, Self)>
-    where
-        Self: Sized,
-    {
-        Ok(VmStatusStopping {})
-    }
-
-    fn do_work(&mut self) -> Result<(), RunError> {
-        if self.vcpu_running_count.load(Ordering::SeqCst) == 0 {
-            Err(RunError::Exit)
-        } else {
-            Ok(())
-        }
+    fn stop(self) -> Self::Stopping {
+        Self::Stopping {}
     }
 }
 
@@ -47,13 +39,13 @@ impl VmStatusStoppingOps for VmStatusStopping {}
 /// Data needed when VM is running
 pub struct VmStatusRunning {
     vcpus: Vec<VCpu>,
-    data: VmData,
+    data: VmDataWeak,
     dtb_addr: GuestPhysAddr,
     vcpu_running_count: Arc<AtomicUsize>,
 }
 
 impl VmStatusRunning {
-    pub(crate) fn new(data: VmData, vcpus: Vec<VCpu>) -> Self {
+    pub(crate) fn new(data: VmDataWeak, vcpus: Vec<VCpu>) -> Self {
         Self {
             vcpus,
             data,
@@ -84,12 +76,12 @@ impl VmStatusRunning {
                 }
             };
 
-            let mut guest_mem = self.data.new_memory(&kind, flags);
+            let mut guest_mem = self.data.try_use()?.new_memory(&kind, flags);
 
             self.dtb_addr = guest_mem.gpa();
 
             guest_mem.copy_from_slice(0, &dtb_cfg.data);
-            self.data.add_reserved_memory(guest_mem);
+            self.data.try_use()?.add_reserved_memory(guest_mem);
         } else {
             debug!(
                 "No dtb provided, generating new dtb for {} ({})",
@@ -127,7 +119,7 @@ impl VmStatusRunning {
             let root_address_cells = fdt.root().address_cells().unwrap_or(2);
             let root_size_cells = fdt.root().size_cells().unwrap_or(2);
 
-            for (i, m) in self.data.memories().iter().enumerate() {
+            for (i, m) in self.data.try_use()?.memories().iter().enumerate() {
                 let mut node = Node::new(&format!("memory@{i}"));
                 let mut prop = Property::new("device_type", vec![]);
                 prop.set_string("memory");
@@ -147,7 +139,7 @@ impl VmStatusRunning {
             let f = fdt_edit::Fdt::from_bytes(&dtb_data).unwrap();
             debug!("Generated DTB:\n{f}");
 
-            let mut guest_mem = self.data.memories().into_iter().next().unwrap();
+            let mut guest_mem = self.data.try_use()?.memories().into_iter().next().unwrap();
             let mut dtb_start =
                 (guest_mem.0.as_usize() + guest_mem.1.min(512 * 1024 * 1024)) - dtb_data.len();
             dtb_start = dtb_start.align_down_4k();
@@ -170,6 +162,8 @@ impl VmStatusRunning {
     fn copy_to_guest(&mut self, gpa: GuestPhysAddr, data: &[u8]) {
         let parts = self
             .data
+            .try_use()
+            .unwrap()
             .addrspace
             .lock()
             .translated_byte_buffer(gpa.as_usize().into(), data.len())

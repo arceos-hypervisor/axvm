@@ -8,9 +8,10 @@ use std::{
 use arm_vcpu::Aarch64VCpuSetupConfig;
 
 use crate::{
-    GuestPhysAddr, TASK_STACK_SIZE, VmData, VmStatusInitOps,
+    GuestPhysAddr, TASK_STACK_SIZE, VmRunCommonData, VmStatusInitOps,
     arch::{VmStatusRunning, cpu::VCpu},
     config::AxVMConfig,
+    data2::VmDataWeak,
     vm::{MappingFlags, VmId},
 };
 
@@ -19,26 +20,27 @@ const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
 const VM_ASPACE_END: GuestPhysAddr =
     GuestPhysAddr::from_usize(VM_ASPACE_BASE.as_usize() + VM_ASPACE_SIZE);
 
-pub struct VmInit {
+pub struct VmMachineInited {
     pub id: VmId,
     pub name: String,
-    pt_levels: usize,
-    stop_requested: AtomicBool,
-    run_data: Option<VmStatusRunning>,
+    // pt_levels: usize,
+    // stop_requested: AtomicBool,
+    pub run_data: VmStatusRunning,
 }
 
-impl VmInit {
+impl VmMachineInited {
     /// Creates a new VM with the given configuration
-    pub fn new(config: &AxVMConfig) -> anyhow::Result<Self> {
-        let vm = Self {
-            id: config.id().into(),
-            name: config.name(),
-            pt_levels: 4,
-            stop_requested: AtomicBool::new(false),
-            run_data: None,
-        };
-        Ok(vm)
-    }
+    // pub fn new(config: &AxVMConfig) -> anyhow::Result<Self> {
+    //     let vm = Self {
+    //         id: config.id().into(),
+    //         name: config.name().into(),
+    //         pt_levels: 4,
+    //         stop_requested: AtomicBool::new(false),
+    //         run_data: None,
+    //     };
+    //     Ok(vm)
+    // }
+    
 
     /// Initializes the VM, creating vCPUs and setting up memory
     pub fn init(&mut self, config: AxVMConfig) -> anyhow::Result<()> {
@@ -47,14 +49,14 @@ impl VmInit {
         let vcpus = self.new_vcpus(&config)?;
 
         let mut run_data = VmStatusRunning::new(
-            VmData::new(self.pt_levels, VM_ASPACE_BASE..VM_ASPACE_END)?,
+            VmRunCommonData::new(self.pt_levels, VM_ASPACE_BASE..VM_ASPACE_END)?,
             vcpus,
         );
 
         debug!("Mapping memory regions for VM {} ({})", self.id, self.name);
         for memory_cfg in &config.memory_regions {
             use crate::vm::MappingFlags;
-            let m = run_data.data.new_memory(
+            let m = run_data.data.try_use()?.new_memory(
                 memory_cfg,
                 MappingFlags::READ
                     | MappingFlags::WRITE
@@ -64,13 +66,13 @@ impl VmInit {
             run_data.data.add_memory(m);
         }
 
-        run_data.data.load_kernel_image(&config)?;
+        run_data.data.try_use()?.load_kernel_image(&config)?;
         run_data.make_dtb(&config)?;
 
-        run_data.data.map_passthrough_regions()?;
+        run_data.data.try_use()?.map_passthrough_regions()?;
 
-        let kernel_entry = run_data.data.kernel_entry();
-        let gpt_root = run_data.data.gpt_root();
+        let kernel_entry = run_data.data.try_use()?.kernel_entry();
+        let gpt_root = run_data.data.try_use()?.gpt_root();
 
         // Setup vCPUs
         for vcpu in &mut run_data.vcpus {
@@ -141,7 +143,7 @@ impl VmInit {
     }
 }
 
-impl VmStatusInitOps for VmInit {
+impl VmStatusInitOps for VmMachineInited {
     type Running = VmStatusRunning;
 
     fn id(&self) -> VmId {
@@ -152,7 +154,7 @@ impl VmStatusInitOps for VmInit {
         &self.name
     }
 
-    fn start(self) -> Result<Self::Running, (anyhow::Error, Self)> {
+    fn start(self, vmdata: VmDataWeak) -> Result<Self::Running, (anyhow::Error, Self)> {
         let mut data = self.run_data.unwrap();
 
         let mut vcpus = vec![];

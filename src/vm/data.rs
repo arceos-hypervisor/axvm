@@ -1,6 +1,6 @@
 use core::{alloc::Layout, ops::Range};
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     vec::Vec,
 };
 
@@ -19,14 +19,18 @@ const ALIGN: usize = 1024 * 1024 * 2;
 
 use super::addrspace::AddrSpace;
 
-#[derive(Clone)]
-pub struct VmData {
-    shared: Arc<Mutex<SharedData>>,
-    pub(crate) addrspace: Arc<Mutex<AddrSpace>>,
+pub type VmDataArc = Arc<VmRunCommonData>;
+
+pub struct VmRunCommonData {
+    shared: Mutex<SharedData>,
+    pub(crate) addrspace: Mutex<AddrSpace>,
 }
 
-impl VmData {
-    pub fn new(gpt_levels: usize, vm_addr_space: Range<GuestPhysAddr>) -> anyhow::Result<Self> {
+impl VmRunCommonData {
+    pub fn new(
+        gpt_levels: usize,
+        vm_addr_space: Range<GuestPhysAddr>,
+    ) -> anyhow::Result<Arc<Self>> {
         let mut memory_map = VmRegionMap::new(Vec::new());
         let vm_space_size = vm_addr_space.end.as_usize() - vm_addr_space.start.as_usize();
         memory_map.add(VmRegion {
@@ -42,13 +46,13 @@ impl VmData {
             vm_space_size,
         )
         .map_err(|e| anyhow!("Failed to create address space: {e:?}"))?;
-        Ok(Self {
-            addrspace: Arc::new(Mutex::new(address_space)),
-            shared: Arc::new(Mutex::new(SharedData {
+        Ok(Arc::new(Self {
+            addrspace: Mutex::new(address_space),
+            shared: Mutex::new(SharedData {
                 memory_map,
                 ..Default::default()
-            })),
-        })
+            }),
+        }))
     }
 
     pub fn add_memory(&self, m: GuestMemory) {
@@ -66,7 +70,7 @@ impl VmData {
         Ok(())
     }
 
-    pub fn new_memory(&self, kind: &MemoryKind, flags: MappingFlags) -> GuestMemory {
+    pub fn new_memory(self: &Arc<Self>, kind: &MemoryKind, flags: MappingFlags) -> GuestMemory {
         let _gpa;
         let _size;
         let mut hva = HostVirtAddr::from(0);
@@ -121,8 +125,12 @@ impl VmData {
             hva,
             size: _size,
             kind: kind.clone(),
-            owner: self.clone(),
+            owner: self.weak(),
         }
+    }
+
+    pub fn weak(self: &Arc<Self>) -> VmDataWeak {
+        Arc::downgrade(self).into()
     }
 
     pub fn load_kernel_image(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
@@ -242,13 +250,15 @@ pub struct GuestMemory {
     hva: HostVirtAddr,
     size: usize,
     kind: MemoryKind,
-    owner: VmData,
+    owner: VmDataWeak,
 }
 
 impl GuestMemory {
     pub fn copy_from_slice(&mut self, offset: usize, data: &[u8]) {
         assert!(data.len() <= self.size - offset);
-        let g = self.owner.addrspace.lock();
+        let owner = self.owner.try_use().unwrap();
+
+        let g = owner.addrspace.lock();
         let hva = g
             .translated_byte_buffer(self.gpa.as_usize().into(), self.size)
             .expect("Failed to translate kernel image load address");
@@ -282,8 +292,10 @@ impl GuestMemory {
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
+        let owner = self.owner.try_use().unwrap();
+
         let mut result = vec![];
-        let g = self.owner.addrspace.lock();
+        let g = owner.addrspace.lock();
         let hva = g
             .translated_byte_buffer(self.gpa.as_usize().into(), self.size)
             .expect("Failed to translate memory region");
@@ -297,7 +309,12 @@ impl GuestMemory {
 
 impl Drop for GuestMemory {
     fn drop(&mut self) {
-        let mut g = self.owner.addrspace.lock();
+        let owner = match self.owner.inner.upgrade() {
+            Some(o) => o,
+            None => return,
+        };
+
+        let mut g = owner.addrspace.lock();
         match &self.kind {
             MemoryKind::Identical { .. } => {
                 unsafe {

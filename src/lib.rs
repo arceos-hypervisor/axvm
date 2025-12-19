@@ -37,6 +37,7 @@ pub(crate) mod arch;
 
 mod fdt;
 mod vm;
+mod vcpu;
 
 pub mod config;
 pub mod vhal;

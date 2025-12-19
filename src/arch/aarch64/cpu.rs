@@ -1,13 +1,17 @@
-use core::{fmt::Display, sync::atomic::AtomicBool};
+use core::{fmt::Display, ops::Deref, sync::atomic::AtomicBool};
 use std::sync::Arc;
 
 use aarch64_cpu::registers::*;
 use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
 use axvm_types::addr::*;
 
-use crate::vhal::{
-    ArchCpuData,
-    cpu::{CpuHardId, CpuId, HCpuExclusive},
+use crate::{
+    data2::VmDataWeak,
+    vcpu::VCpuCommon,
+    vhal::{
+        ArchCpuData,
+        cpu::{CpuHardId, CpuId, HCpuExclusive},
+    },
 };
 
 pub struct HCpu {
@@ -97,53 +101,34 @@ impl VCpuHandle {
 }
 
 pub struct VCpu {
-    pub id: CpuHardId,
     pub vcpu: arm_vcpu::Aarch64VCpu,
-    hcpu: HCpuExclusive,
-    handle: VCpuHandle,
+    common: VCpuCommon,
 }
 
 impl VCpu {
-    pub fn new(host_cpuid: Option<CpuId>, dtb_addr: GuestPhysAddr) -> anyhow::Result<Self> {
-        let hcpu_exclusive = HCpuExclusive::try_new(host_cpuid)
-            .ok_or_else(|| anyhow!("Failed to allocate cpu with id `{host_cpuid:?}`"))?;
+    pub fn new(
+        host_cpuid: Option<CpuId>,
+        dtb_addr: GuestPhysAddr,
+        vm: VmDataWeak,
+    ) -> anyhow::Result<Self> {
+        let common = VCpuCommon::new_exclusive(host_cpuid, vm)?;
 
-        let hard_id = hcpu_exclusive.hard_id();
+        let hard_id = common.hard_id();
 
         let vcpu = arm_vcpu::Aarch64VCpu::new(Aarch64VCpuCreateConfig {
             mpidr_el1: hard_id.raw() as u64,
             dtb_addr: dtb_addr.as_usize(),
         })
         .unwrap();
-        Ok(VCpu {
-            id: hard_id,
-            vcpu,
-            hcpu: hcpu_exclusive,
-            handle: VCpuHandle::new(),
-        })
-    }
-
-    pub fn handle(&self) -> VCpuHandle {
-        self.handle.clone()
-    }
-
-    pub fn with_hcpu<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&HCpu) -> R,
-    {
-        self.hcpu.with_cpu(f)
-    }
-
-    pub fn binded_cpu_id(&self) -> CpuId {
-        self.hcpu.cpu_id()
+        Ok(VCpu { vcpu, common })
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
-        info!("Starting vCPU {}", self.id);
+        info!("Starting vCPU {}", self.id());
 
-        while self.handle.is_active() {
+        while self.is_active() {
             let exit_reason = self.vcpu.run().map_err(|e| anyhow!("{e}"))?;
-            debug!("vCPU {} exited with reason: {:?}", self.id, exit_reason);
+            debug!("vCPU {} exited with reason: {:?}", self.id(), exit_reason);
             match exit_reason {
                 arm_vcpu::AxVCpuExitReason::Hypercall { nr, args } => todo!(),
                 arm_vcpu::AxVCpuExitReason::MmioRead {
@@ -163,7 +148,10 @@ impl VCpu {
                     arg,
                 } => todo!(),
                 arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
-                arm_vcpu::AxVCpuExitReason::SystemDown => todo!(),
+                arm_vcpu::AxVCpuExitReason::SystemDown => {
+                    info!("vCPU {} requested system shutdown", self.common.bind_id);
+                    self.shutdown()?;
+                }
                 arm_vcpu::AxVCpuExitReason::Nothing => {}
                 arm_vcpu::AxVCpuExitReason::SendIPI {
                     target_cpu,
@@ -177,5 +165,13 @@ impl VCpu {
         }
 
         Ok(())
+    }
+}
+
+impl Deref for VCpu {
+    type Target = VCpuCommon;
+
+    fn deref(&self) -> &Self::Target {
+        &self.common
     }
 }
