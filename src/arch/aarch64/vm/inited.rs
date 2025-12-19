@@ -1,16 +1,8 @@
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::{
-    os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
-    string::String,
-    vec::Vec,
-};
-
-use arm_vcpu::Aarch64VCpuSetupConfig;
+use std::{string::String, vec::Vec};
 
 use crate::{
-    GuestPhysAddr, TASK_STACK_SIZE, VmAddrSpace, VmMachineInitedOps, VmMachineRunningCommon,
+    GuestPhysAddr, VmAddrSpace, VmMachineInitedOps, VmMachineRunningCommon,
     arch::{VmMachineRunning, cpu::VCpu},
-    config::AxVMConfig,
     data::VmDataWeak,
     vm::VmId,
 };

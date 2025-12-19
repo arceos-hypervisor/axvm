@@ -1,10 +1,4 @@
-use core::fmt;
-
-use alloc::sync::Arc;
-use spin::{Mutex, RwLock};
-use std::thread;
-
-use crate::{AxVMConfig, arch::VmMachineInited, data::VmData, vm::data::VmDataWeak};
+use crate::{AxVMConfig, data::VmData};
 
 mod addrspace;
 pub(crate) mod data;

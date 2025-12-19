@@ -82,9 +82,6 @@ impl FdtBuilder {
             self.fdt.remove_node(&path).unwrap();
         }
 
-        let root_address_cells = self.fdt.root().address_cells().unwrap_or(2);
-        let root_size_cells = self.fdt.root().size_cells().unwrap_or(2);
-
         for (i, m) in memories.enumerate() {
             let mut node = Node::new(&format!("memory@{i}"));
             let mut prop = Property::new("device_type", vec![]);

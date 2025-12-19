@@ -5,7 +5,6 @@ use axstd::{
 };
 use bitmap_allocator::BitAlloc;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use spin::Mutex;
 
 use crate::{
     HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE,

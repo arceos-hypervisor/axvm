@@ -39,7 +39,7 @@ impl HCpuExclusive {
     where
         F: FnOnce(&HCpu) -> R,
     {
-        for (id, cpu) in PRE_CPU.iter() {
+        for (_id, cpu) in PRE_CPU.iter() {
             if cpu.id == self.0 {
                 return f(cpu);
             }

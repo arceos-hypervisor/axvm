@@ -19,6 +19,7 @@ pub trait VmMachineUninitOps {
         Self: Sized;
 }
 
+#[allow(unused)]
 pub trait VmMachineInitedOps {
     type Running: VmMachineRunningOps;
     fn id(&self) -> VmId;
@@ -49,6 +50,7 @@ pub enum VmMachineState {
     Inited(VmMachineInited),
     Running(VmMachineRunning),
     Switching,
+    #[allow(unused)]
     Stopping(VmStatusStopping),
     Stopped,
 }
