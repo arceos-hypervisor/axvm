@@ -1,27 +1,22 @@
-use alloc::{
-    collections::VecDeque,
-    string::{String, ToString},
-    sync::Arc,
-};
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use spin::Mutex;
-use std::thread;
+use alloc::string::String;
+use core::sync::atomic::{AtomicU8, Ordering};
 
 use crate::{
-    AxVMConfig, RunError, Status, VmId, VmStatusInitOps, VmStatusRunningOps,
-    arch::{VmMachineInited, VmStatusRunning, VmStatusStopping},
+    AxVMConfig, Status, VmId,
+    arch::{VmMachineInited, VmMachineRunning, VmMachineUninit, VmStatusStopping},
+    data::VmDataWeak,
 };
 
 pub trait VmMachineUninitOps {
-    type Inited: VmStatusInitOps;
+    type Inited: VmMachineInitedOps;
     fn new(config: AxVMConfig) -> Self;
     fn init(self, vmdata: VmDataWeak) -> Result<Self::Inited, (anyhow::Error, Self)>
     where
         Self: Sized;
 }
 
-pub trait VmStatusInitOps {
-    type Running: VmStatusRunningOps;
+pub trait VmMachineInitedOps {
+    type Running: VmMachineRunningOps;
     fn id(&self) -> VmId;
     fn name(&self) -> &str;
     fn start(self, vmdata: VmDataWeak) -> Result<Self::Running, (anyhow::Error, Self)>
@@ -29,12 +24,12 @@ pub trait VmStatusInitOps {
         Self: Sized;
 }
 
-pub trait VmStatusRunningOps {
-    type Stopping: VmStatusStoppingOps;
+pub trait VmMachineRunningOps {
+    type Stopping: VmMachineStoppingOps;
     fn stop(self) -> Self::Stopping;
 }
 
-pub trait VmStatusStoppingOps {}
+pub trait VmMachineStoppingOps {}
 
 /// A lightweight container that stores the identifier and human readable name
 /// for a VM instance. Shared between the public [`Vm`] object and the
@@ -46,9 +41,9 @@ pub struct VmCommon {
 }
 
 pub enum VmMachineState {
-    Uninit(AxVMConfig),
+    Uninit(VmMachineUninit),
     Inited(VmMachineInited),
-    Running(VmStatusRunning),
+    Running(VmMachineRunning),
     Switching,
     Stopping(VmStatusStopping),
     Stopped,

@@ -11,6 +11,7 @@ use crate::{
 pub(super) static PRE_CPU: PreCpuSet<HCpu> = PreCpuSet::new();
 pub(super) static HCPU_ALLOC: Mutex<BitAlloc4K> = Mutex::new(BitAlloc4K::DEFAULT);
 
+#[derive(Debug)]
 pub struct HCpuExclusive(CpuId);
 
 impl HCpuExclusive {

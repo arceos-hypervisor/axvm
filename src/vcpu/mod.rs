@@ -1,6 +1,7 @@
 use crate::{
     CpuId,
-    data2::{VmData, VmDataWeak},
+    arch::HCpu,
+    data::{VmData, VmDataWeak},
     vhal::cpu::{CpuHardId, HCpuExclusive},
 };
 
@@ -12,7 +13,7 @@ pub struct VCpuCommon {
 
 impl VCpuCommon {
     pub fn new_exclusive(bind: Option<CpuId>, vm: VmDataWeak) -> anyhow::Result<Self> {
-        let hcpu_exclusive = HCpuExclusive::try_new(bind)
+        let hcpu = HCpuExclusive::try_new(bind)
             .ok_or_else(|| anyhow!("Failed to allocate cpu with id `{bind:?}`"))?;
         Ok(VCpuCommon { hcpu, vm })
     }

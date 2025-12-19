@@ -6,7 +6,7 @@ use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
 use axvm_types::addr::*;
 
 use crate::{
-    data2::VmDataWeak,
+    data::VmDataWeak,
     vcpu::VCpuCommon,
     vhal::{
         ArchCpuData,
@@ -19,6 +19,7 @@ pub struct HCpu {
     pub hard_id: CpuHardId,
     vpercpu: Aarch64PerCpu,
     max_guest_page_table_levels: usize,
+    pub pa_range: core::ops::Range<usize>,
 }
 
 impl HCpu {
@@ -33,12 +34,14 @@ impl HCpu {
             hard_id: CpuHardId::new(hard_id),
             vpercpu,
             max_guest_page_table_levels: 0,
+            pa_range: 0..0,
         }
     }
 
     pub fn init(&mut self) -> anyhow::Result<()> {
         self.vpercpu.hardware_enable();
         self.max_guest_page_table_levels = self.vpercpu.max_guest_page_table_levels();
+        self.pa_range = self.vpercpu.pa_range();
         Ok(())
     }
 
@@ -124,11 +127,15 @@ impl VCpu {
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
-        info!("Starting vCPU {}", self.id());
+        info!("Starting vCPU {}", self.bind_id());
 
         while self.is_active() {
             let exit_reason = self.vcpu.run().map_err(|e| anyhow!("{e}"))?;
-            debug!("vCPU {} exited with reason: {:?}", self.id(), exit_reason);
+            debug!(
+                "vCPU {} exited with reason: {:?}",
+                self.bind_id(),
+                exit_reason
+            );
             match exit_reason {
                 arm_vcpu::AxVCpuExitReason::Hypercall { nr, args } => todo!(),
                 arm_vcpu::AxVCpuExitReason::MmioRead {
@@ -149,8 +156,8 @@ impl VCpu {
                 } => todo!(),
                 arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
                 arm_vcpu::AxVCpuExitReason::SystemDown => {
-                    info!("vCPU {} requested system shutdown", self.common.bind_id);
-                    self.shutdown()?;
+                    info!("vCPU {} requested system shutdown", self.bind_id());
+                    self.vm()?.stop()?;
                 }
                 arm_vcpu::AxVCpuExitReason::Nothing => {}
                 arm_vcpu::AxVCpuExitReason::SendIPI {
