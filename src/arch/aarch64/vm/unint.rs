@@ -11,11 +11,6 @@ use crate::{
     fdt::FdtBuilder,
 };
 
-const VM_ASPACE_BASE: GuestPhysAddr = GuestPhysAddr::from_usize(0);
-const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
-const VM_ASPACE_END: GuestPhysAddr =
-    GuestPhysAddr::from_usize(VM_ASPACE_BASE.as_usize() + VM_ASPACE_SIZE);
-
 pub struct VmMachineUninit {
     config: AxVMConfig,
     pt_levels: usize,

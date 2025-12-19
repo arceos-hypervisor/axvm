@@ -11,6 +11,7 @@ mod running;
 
 pub(crate) use running::*;
 
+#[allow(unused)]
 pub trait VmMachineUninitOps {
     type Inited: VmMachineInitedOps;
     fn new(config: AxVMConfig) -> Self;
@@ -29,21 +30,13 @@ pub trait VmMachineInitedOps {
         Self: Sized;
 }
 
+#[allow(unused)]
 pub trait VmMachineRunningOps {
     type Stopping: VmMachineStoppingOps;
     fn stop(self) -> Self::Stopping;
 }
 
 pub trait VmMachineStoppingOps {}
-
-/// A lightweight container that stores the identifier and human readable name
-/// for a VM instance. Shared between the public [`Vm`] object and the
-/// background machine thread for logging and observability.
-#[derive(Debug, Clone)]
-pub struct VmCommon {
-    pub id: VmId,
-    pub name: String,
-}
 
 pub enum VmMachineState {
     Uninit(VmMachineUninit),

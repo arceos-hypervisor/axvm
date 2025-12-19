@@ -364,18 +364,18 @@ impl GuestMemory {
         self.layout.size()
     }
 
-    pub fn to_vec(&self) -> Vec<u8> {
-        let mut result = vec![];
-        let g = self.aspace.lock();
-        let hva = g
-            .translated_byte_buffer(self.gpa.as_usize().into(), self.size())
-            .expect("Failed to translate memory region");
-        for buff in hva {
-            result.extend_from_slice(buff);
-        }
-        result.resize(self.size(), 0);
-        result
-    }
+    // pub fn to_vec(&self) -> Vec<u8> {
+    //     let mut result = vec![];
+    //     let g = self.aspace.lock();
+    //     let hva = g
+    //         .translated_byte_buffer(self.gpa.as_usize().into(), self.size())
+    //         .expect("Failed to translate memory region");
+    //     for buff in hva {
+    //         result.extend_from_slice(buff);
+    //     }
+    //     result.resize(self.size(), 0);
+    //     result
+    // }
 }
 
 impl Drop for GuestMemory {
