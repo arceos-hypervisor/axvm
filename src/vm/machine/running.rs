@@ -8,7 +8,7 @@ use std::{
 use alloc::vec::Vec;
 
 use crate::{
-    RunError, TASK_STACK_SIZE, VmAddrSpace, arch::cpu::VCpu, data::VmDataWeak, vcpu::VCpuOp,
+    TASK_STACK_SIZE, VmAddrSpace, arch::cpu::VCpu, data::VmDataWeak, vcpu::VCpuOp,
     vhal::cpu::CpuHardId,
 };
 
@@ -83,10 +83,6 @@ impl VmMachineRunningCommon {
             running_cpu_count,
             vm: self.vm.clone(),
         }
-    }
-
-    pub fn vmspace(&self) -> &VmAddrSpace {
-        &self.vmspace
     }
 }
 

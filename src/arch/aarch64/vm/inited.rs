@@ -1,7 +1,7 @@
 use std::{string::String, vec::Vec};
 
 use crate::{
-    GuestPhysAddr, VmAddrSpace, VmMachineInitedOps, VmMachineRunningCommon,
+    VmAddrSpace, VmMachineInitedOps, VmMachineRunningCommon,
     arch::{VmMachineRunning, cpu::VCpu},
     data::VmDataWeak,
     vm::VmId,

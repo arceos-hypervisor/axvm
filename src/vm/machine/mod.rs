@@ -1,4 +1,3 @@
-use alloc::string::String;
 use core::sync::atomic::{AtomicU8, Ordering};
 
 use crate::{
@@ -46,12 +45,6 @@ pub enum VmMachineState {
     #[allow(unused)]
     Stopping(VmStatusStopping),
     Stopped,
-}
-
-impl VmMachineState {
-    pub fn is_active(&self) -> bool {
-        !matches!(self, VmMachineState::Stopping(_) | VmMachineState::Stopped)
-    }
 }
 
 /// Auxiliary wrapper that stores the current machine status in an atomically

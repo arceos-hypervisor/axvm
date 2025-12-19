@@ -158,6 +158,38 @@ impl VmData {
             inner: Arc::downgrade(&self.inner),
         }
     }
+
+    pub(crate) fn with_machine_running<F, R>(&self, f: F) -> Result<R, RunError>
+    where
+        F: FnOnce(&VmMachineRunning) -> R,
+    {
+        let status = self.machine.read();
+        let running = match &*status {
+            VmMachineState::Running(running) => running,
+            _ => {
+                return Err(RunError::ExitWithError(anyhow!(
+                    "VM is not in Running state"
+                )));
+            }
+        };
+        Ok(f(running))
+    }
+
+    pub(crate) fn with_machine_running_mut<F, R>(&self, f: F) -> Result<R, RunError>
+    where
+        F: FnOnce(&mut VmMachineRunning) -> R,
+    {
+        let mut status = self.machine.write();
+        let running = match &mut *status {
+            VmMachineState::Running(running) => running,
+            _ => {
+                return Err(RunError::ExitWithError(anyhow!(
+                    "VM is not in Running state"
+                )));
+            }
+        };
+        Ok(f(running))
+    }
 }
 
 impl From<Arc<VmDataInner>> for VmData {
@@ -206,23 +238,6 @@ impl VmDataWeak {
             *status_guard = VmMachineState::Stopped;
             inner.status.store(VMStatus::Stopped);
         }
-    }
-
-    pub(crate) fn with_machine_running<F, R>(&self, f: F) -> Result<R, RunError>
-    where
-        F: FnOnce(&VmMachineRunning) -> R,
-    {
-        let vmdata = self.try_upgrade()?;
-        let status = vmdata.machine.read();
-        let running = match &*status {
-            VmMachineState::Running(running) => running,
-            _ => {
-                return Err(RunError::ExitWithError(anyhow!(
-                    "VM is not in Running state"
-                )));
-            }
-        };
-        Ok(f(running))
     }
 }
 

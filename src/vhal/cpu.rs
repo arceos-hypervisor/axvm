@@ -47,10 +47,6 @@ impl HCpuExclusive {
         panic!("CPU data not found for CPU ID {}", self.0);
     }
 
-    pub fn cpu_id(&self) -> CpuId {
-        self.0
-    }
-
     pub fn hard_id(&self) -> CpuHardId {
         self.with_cpu(|cpu| cpu.hard_id())
     }
