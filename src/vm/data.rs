@@ -111,8 +111,10 @@ impl VmData {
             VmMachineState::Uninit(uninit) => {
                 let init = match uninit.init(self.downgrade()) {
                     Ok(inited) => inited,
-                    Err((e, uninit)) => {
-                        *status_guard = VmMachineState::Uninit(uninit);
+                    Err(e) => {
+                        self.set_err(RunError::ExitWithError(anyhow!("{e}")));
+                        *status_guard = VmMachineState::Stopped;
+                        self.status.store(VMStatus::Stopped);
                         return Err(e);
                     }
                 };
@@ -137,8 +139,10 @@ impl VmData {
                     self.status.store(VMStatus::Running);
                     Ok(())
                 }
-                Err((e, init)) => {
-                    *status_guard = VmMachineState::Inited(init);
+                Err(e) => {
+                    self.set_err(RunError::ExitWithError(anyhow!("{e}")));
+                    *status_guard = VmMachineState::Stopped;
+                    self.status.store(VMStatus::Stopped);
                     Err(e)
                 }
             },
@@ -193,6 +197,14 @@ impl VmDataWeak {
             inner.is_active()
         } else {
             false
+        }
+    }
+
+    pub(crate) fn set_stopped(&self) {
+        if let Some(inner) = self.upgrade() {
+            let mut status_guard = inner.machine.write();
+            *status_guard = VmMachineState::Stopped;
+            inner.status.store(VMStatus::Stopped);
         }
     }
 }

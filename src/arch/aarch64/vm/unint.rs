@@ -33,14 +33,11 @@ impl VmMachineUninitOps for VmMachineUninit {
         }
     }
 
-    fn init(mut self, vmdata: VmDataWeak) -> Result<Self::Inited, (anyhow::Error, Self)>
+    fn init(mut self, vmdata: VmDataWeak) -> Result<Self::Inited, anyhow::Error>
     where
         Self: Sized,
     {
-        match self.init_raw(vmdata) {
-            Ok(inited) => Ok(inited),
-            Err(e) => Err((e, self)),
-        }
+        self.init_raw(vmdata)
     }
 }
 

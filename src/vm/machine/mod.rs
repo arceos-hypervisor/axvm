@@ -7,10 +7,14 @@ use crate::{
     data::VmDataWeak,
 };
 
+mod running;
+
+pub(crate) use running::*;
+
 pub trait VmMachineUninitOps {
     type Inited: VmMachineInitedOps;
     fn new(config: AxVMConfig) -> Self;
-    fn init(self, vmdata: VmDataWeak) -> Result<Self::Inited, (anyhow::Error, Self)>
+    fn init(self, vmdata: VmDataWeak) -> Result<Self::Inited, anyhow::Error>
     where
         Self: Sized;
 }
@@ -19,7 +23,7 @@ pub trait VmMachineInitedOps {
     type Running: VmMachineRunningOps;
     fn id(&self) -> VmId;
     fn name(&self) -> &str;
-    fn start(self, vmdata: VmDataWeak) -> Result<Self::Running, (anyhow::Error, Self)>
+    fn start(self, vmdata: VmDataWeak) -> Result<Self::Running, anyhow::Error>
     where
         Self: Sized;
 }
