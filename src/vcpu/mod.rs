@@ -1,9 +1,15 @@
 use crate::{
-    CpuId,
+    CpuId, RunError,
     arch::HCpu,
     data::{VmData, VmDataWeak},
     vhal::cpu::{CpuHardId, HCpuExclusive},
 };
+
+pub trait VCpuOp: Send + 'static{
+    fn bind_id(&self) -> CpuId;
+    fn hard_id(&self) -> CpuHardId;
+    fn run(&mut self) -> Result<(), RunError>;
+}
 
 #[derive(Debug)]
 pub struct VCpuCommon {

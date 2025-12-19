@@ -11,7 +11,7 @@ use spin::RwLock;
 
 use crate::{
     AxVMConfig, RunError, VmId, VmMachineInitedOps, VmMachineRunningOps, VmMachineUninitOps,
-    arch::{VmMachineInited, VmMachineUninit},
+    arch::{VmMachineInited, VmMachineRunning, VmMachineUninit},
     config::AxVCpuConfig,
     vm::machine::{AtomicState, VMStatus, VmMachineState},
 };
@@ -206,6 +206,23 @@ impl VmDataWeak {
             *status_guard = VmMachineState::Stopped;
             inner.status.store(VMStatus::Stopped);
         }
+    }
+
+    pub(crate) fn with_machine_running<F, R>(&self, f: F) -> Result<R, RunError>
+    where
+        F: FnOnce(&VmMachineRunning) -> R,
+    {
+        let vmdata = self.try_upgrade()?;
+        let status = vmdata.machine.read();
+        let running = match &*status {
+            VmMachineState::Running(running) => running,
+            _ => {
+                return Err(RunError::ExitWithError(anyhow!(
+                    "VM is not in Running state"
+                )));
+            }
+        };
+        Ok(f(running))
     }
 }
 
