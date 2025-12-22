@@ -182,6 +182,7 @@ impl VmData {
 
     pub fn downgrade(&self) -> VmDataWeak {
         VmDataWeak {
+            id: self.id(),
             inner: Arc::downgrade(&self.inner),
         }
     }
@@ -249,10 +250,15 @@ impl Deref for VmData {
 
 #[derive(Clone)]
 pub struct VmDataWeak {
+    id: VmId,
     inner: Weak<VmDataInner>,
 }
 
 impl VmDataWeak {
+    pub fn id(&self) -> VmId {
+        self.id
+    }
+
     pub fn upgrade(&self) -> Option<VmData> {
         Some(self.inner.upgrade()?.into())
     }

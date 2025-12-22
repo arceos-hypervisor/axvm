@@ -68,6 +68,7 @@ impl VmMachineRunningCommon {
                 );
                 waiter.vm.wait_for_running();
                 info!("VCpu {} on {} run", cpu.hard_id(), bind_id);
+                // debug!("\n{:#x?}", cpu);
                 let res = cpu.run();
                 if let Err(e) = res {
                     info!("vCPU {} exited with error: {e}", bind_id);

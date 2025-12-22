@@ -1,11 +1,11 @@
 use crate::{
-    CpuId, RunError,
+    CpuId, RunError, VmId,
     arch::HCpu,
     data::{VmData, VmDataWeak},
     vhal::cpu::{CpuHardId, HCpuExclusive},
 };
 
-pub trait VCpuOp: Send + 'static{
+pub trait VCpuOp: core::fmt::Debug + Send + 'static {
     fn bind_id(&self) -> CpuId;
     fn hard_id(&self) -> CpuHardId;
     fn run(&mut self) -> Result<(), RunError>;
@@ -18,6 +18,10 @@ pub struct VCpuCommon {
 }
 
 impl VCpuCommon {
+    pub fn vm_id(&self) -> VmId {
+        self.vm.id()
+    }
+
     pub fn new_exclusive(bind: Option<CpuId>, vm: VmDataWeak) -> anyhow::Result<Self> {
         let hcpu = HCpuExclusive::try_new(bind)
             .ok_or_else(|| anyhow!("Failed to allocate cpu with id `{bind:?}`"))?;

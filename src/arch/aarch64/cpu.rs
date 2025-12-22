@@ -1,4 +1,7 @@
-use core::{fmt::Display, ops::Deref};
+use core::{
+    fmt::{self, Debug, Display},
+    ops::Deref,
+};
 
 use aarch64_cpu::registers::*;
 use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
@@ -116,7 +119,9 @@ impl VCpuOp for VCpu {
 
     fn run(&mut self) -> Result<(), RunError> {
         info!("Starting vCPU {}", self.bind_id());
-
+        self.vcpu
+            .setup_current_cpu(self.vm_id().into())
+            .map_err(|e| anyhow!("{e}"))?;
         while self.is_active() {
             debug!("vCPU {} entering guest", self.bind_id());
             let exit_reason = self.vcpu.run().map_err(|e| anyhow!("{e}"))?;
@@ -150,6 +155,7 @@ impl VCpuOp for VCpu {
                         debug!("vCPU {} is bringing up CPU {}", self.bind_id(), target_cpu);
                         running.cpu_up(CpuHardId::new(target_cpu as _), entry_point, arg)
                     })??;
+                    self.vcpu.set_gpr(0, 0);
                 }
                 arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
                 arm_vcpu::AxVCpuExitReason::SystemDown => {
@@ -177,5 +183,15 @@ impl Deref for VCpu {
 
     fn deref(&self) -> &Self::Target {
         &self.common
+    }
+}
+
+impl Debug for VCpu {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("VCpu")
+            .field("bind_id", &self.bind_id())
+            .field("hard_id", &self.hard_id())
+            .field("vcpu", &self.vcpu)
+            .finish()
     }
 }
