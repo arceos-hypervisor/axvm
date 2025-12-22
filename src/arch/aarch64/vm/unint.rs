@@ -105,7 +105,7 @@ impl VmMachineUninit {
         let mut fdt = FdtBuilder::new()?;
         fdt.setup_cpus(cpus.iter().map(|c| c.deref()))?;
         fdt.setup_memory(vmspace.memories().iter())?;
-        fdt.setup_initrd(None)?;
+        fdt.setup_chosen(None)?;
 
         let dtb_data = fdt.build()?;
 
