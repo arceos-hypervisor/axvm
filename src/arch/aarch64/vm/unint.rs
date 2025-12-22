@@ -73,6 +73,10 @@ impl VmMachineUninit {
             }
         }
 
+        if self.pt_levels == 3 {
+            self.pa_max = self.pa_max.min(0x8000000000);
+        }
+
         debug!(
             "VM {} ({}) vCPU count: {}, \n  Max Guest Page Table Levels: {}\n  Max PA: {:#x}",
             self.config.id, self.config.name, vcpu_count, self.pt_levels, self.pa_max
@@ -101,6 +105,8 @@ impl VmMachineUninit {
         let mut fdt = FdtBuilder::new()?;
         fdt.setup_cpus(cpus.iter().map(|c| c.deref()))?;
         fdt.setup_memory(vmspace.memories().iter())?;
+        fdt.setup_initrd(None)?;
+
         let dtb_data = fdt.build()?;
 
         let dtb_addr = vmspace.load_dtb(&dtb_data)?;

@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use fdt_edit::{Fdt, FdtData, Node, Property, RegInfo, Status};
 
-use crate::{GuestMemory, vcpu::VCpuCommon, vhal::cpu::CpuHardId};
+use crate::{GuestMemory, GuestPhysAddr, vcpu::VCpuCommon, vhal::cpu::CpuHardId};
 
 pub(crate) fn fdt_edit() -> Option<Fdt> {
     let addr = axhal::dtb::get_bootarg();
@@ -97,6 +97,38 @@ impl FdtBuilder {
                 size: Some(m.size() as u64),
             }]);
         }
+
+        Ok(())
+    }
+
+    pub fn setup_initrd(&mut self, initrd: Option<(GuestPhysAddr, usize)>) -> anyhow::Result<()> {
+        let mut node = self
+            .fdt
+            .get_by_path_mut("/chosen")
+            .ok_or_else(|| anyhow::anyhow!("No /chosen node found"))?;
+
+        let Some(initrd) = initrd else {
+            node.node.remove_property("linux,initrd-start");
+            node.node.remove_property("linux,initrd-end");
+            return Ok(());
+        };
+
+        let cells = node.ctx.parent_address_cells();
+        let (initrd_start, initrd_end) = (initrd.0.as_usize(), initrd.0.as_usize() + initrd.1);
+
+        let mut prop_s = Property::new("linux,initrd-start", vec![]);
+        let mut prop_e = Property::new("linux,initrd-end", vec![]);
+
+        if cells == 2 {
+            prop_s.set_u32_ls(&[initrd_start as u32]);
+            prop_e.set_u32_ls(&[initrd_end as u32]);
+        } else {
+            prop_s.set_u64(initrd_start as _);
+            prop_e.set_u64(initrd_end as _);
+        }
+
+        node.node.add_property(prop_s);
+        node.node.add_property(prop_e);
 
         Ok(())
     }
