@@ -120,6 +120,7 @@ impl VmMachineUninit {
         for vcpu in &mut cpus {
             vcpu.vcpu.set_entry(kernel_entry).unwrap();
             vcpu.vcpu.set_dtb_addr(dtb_addr).unwrap();
+            vcpu.set_pt_level(self.pt_levels);
 
             let setup_config = Aarch64VCpuSetupConfig {
                 passthrough_interrupt: self.config.interrupt_mode()
