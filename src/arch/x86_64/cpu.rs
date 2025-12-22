@@ -3,9 +3,8 @@ use core::{
     ops::Deref,
 };
 
-use aarch64_cpu::registers::*;
-use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
 use axvm_types::addr::*;
+use x86_vcpu::*;
 
 use crate::{
     RunError,
@@ -20,7 +19,7 @@ use crate::{
 pub struct HCpu {
     pub id: CpuId,
     pub hard_id: CpuHardId,
-    vpercpu: Aarch64PerCpu,
+    vpercpu: VmxArchVCpu,
     max_guest_page_table_levels: usize,
     pub pa_range: core::ops::Range<usize>,
 }
@@ -102,14 +101,9 @@ impl VCpu {
         let vcpu = arm_vcpu::Aarch64VCpu::new(Aarch64VCpuCreateConfig {
             mpidr_el1: hard_id.raw() as u64,
             dtb_addr: dtb_addr.as_usize(),
-            pt_level: 4,
         })
         .unwrap();
         Ok(VCpu { vcpu, common })
-    }
-
-    pub fn set_pt_level(&mut self, level: usize) {
-        self.vcpu.pt_level = level;
     }
 }
 
@@ -124,7 +118,6 @@ impl VCpuOp for VCpu {
 
     fn run(&mut self) -> Result<(), RunError> {
         info!("Starting vCPU {}", self.bind_id());
-
         self.vcpu
             .setup_current_cpu(self.vm_id().into())
             .map_err(|e| anyhow!("{e}"))?;
