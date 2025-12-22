@@ -91,7 +91,7 @@ impl VmAddrSpace {
                 )
                 .unwrap();
             }
-            MemoryKind::Passthrough { hpa, size } => {
+            MemoryKind::Reserved { hpa, size } => {
                 hva = phys_to_virt(*hpa);
                 _gpa = GuestPhysAddr::from_usize(hva.as_usize());
                 _size = *size;
