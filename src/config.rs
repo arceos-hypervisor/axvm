@@ -27,16 +27,6 @@ pub use axvmconfig::{
 
 use crate::vhal::cpu::CpuId;
 
-/// A part of `AxVMConfig`, which represents a `VCpu`.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct AxVCpuConfig {
-    // pub arch_config: AxArchVCpuConfig,
-    /// The entry address in GPA for the Bootstrap Processor (BSP).
-    pub bsp_entry: GuestPhysAddr,
-    /// The entry address in GPA for the Application Processor (AP).
-    pub ap_entry: GuestPhysAddr,
-}
-
 #[derive(Debug, Default, Clone)]
 pub struct VMImageConfig {
     pub gpa: Option<GuestPhysAddr>,
@@ -58,11 +48,11 @@ pub struct VMImagesConfig {
 
 #[derive(Debug, Clone)]
 pub enum MemoryKind {
-    /// Use identical memory regions
+    /// Use identical memory regions, i.e., HPA == GPA
     Identical { size: usize },
-    /// Use memory regions mapped from host physical address
-    Passthrough { hpa: HostPhysAddr, size: usize },
-    /// Use fixed memory regions
+    /// Use host reserved memory regions, i.e., HPA == GPA
+    Reserved { hpa: HostPhysAddr, size: usize },
+    /// Use fixed address memory regions, i.e., HPA != GPA
     Vmem { gpa: GuestPhysAddr, size: usize },
 }
 
