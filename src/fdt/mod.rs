@@ -101,7 +101,7 @@ impl FdtBuilder {
         Ok(())
     }
 
-    pub fn setup_initrd(&mut self, initrd: Option<(GuestPhysAddr, usize)>) -> anyhow::Result<()> {
+    pub fn setup_chosen(&mut self, initrd: Option<(GuestPhysAddr, usize)>) -> anyhow::Result<()> {
         let mut node = self
             .fdt
             .get_by_path_mut("/chosen")
@@ -129,6 +129,13 @@ impl FdtBuilder {
 
         node.node.add_property(prop_s);
         node.node.add_property(prop_e);
+
+        if let Some(args) = node.node.get_property_mut("bootargs")
+            && let Some(s) = args.as_str()
+        {
+            let bootargs = s.replace(" ro ", " rw ");
+            args.set_string(&bootargs);
+        }
 
         Ok(())
     }
