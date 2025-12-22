@@ -52,8 +52,11 @@ impl VmDataInner {
 
     pub fn wait(&self) -> anyhow::Result<()> {
         while !matches!(self.status(), VMStatus::Stopped) {
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            // TODO: arceos bug, sleep never wakes up
+            // std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::yield_now();
         }
+        info!("VM {} ({}) has stopped.", self.id, self.name);
         self.run_result()
     }
 
@@ -275,6 +278,16 @@ impl VmDataWeak {
             let mut status_guard = inner.machine.write();
             *status_guard = VmMachineState::Stopped;
             inner.status.store(VMStatus::Stopped);
+        }
+    }
+
+    pub(crate) fn wait_for_running(&self) {
+        while let Some(inner) = self.upgrade() {
+            let status = inner.status.load();
+            if status >= VMStatus::Running {
+                break;
+            }
+            std::thread::yield_now();
         }
     }
 }

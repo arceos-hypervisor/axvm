@@ -47,8 +47,8 @@ impl VmMachineRunningCommon {
 
     pub fn run_cpu<C: VCpuOp>(&mut self, mut cpu: C) -> anyhow::Result<()> {
         let waiter = self.new_waiter();
-        let started = Arc::new(AtomicBool::new(false));
-        let started_clone = started.clone();
+        let thread_ok = Arc::new(AtomicBool::new(false));
+        let thread_ok_clone = thread_ok.clone();
         let bind_id = cpu.bind_id();
         std::thread::Builder::new()
             .name(format!("init-cpu-{}", bind_id))
@@ -59,8 +59,15 @@ impl VmMachineRunningCommon {
                     set_current_affinity(AxCpuMask::one_shot(bind_id.raw())),
                     "Initialize CPU affinity failed!"
                 );
-                started_clone.store(true, Ordering::SeqCst);
-                info!("Starting VCpu {} on {}", cpu.hard_id(), bind_id);
+                thread_ok_clone.store(true, Ordering::SeqCst);
+
+                info!(
+                    "vCPU {} on {} ready, waiting for running...",
+                    cpu.bind_id(),
+                    bind_id
+                );
+                waiter.vm.wait_for_running();
+                info!("VCpu {} on {} run", cpu.hard_id(), bind_id);
                 let res = cpu.run();
                 if let Err(e) = res {
                     info!("vCPU {} exited with error: {e}", bind_id);
@@ -75,8 +82,8 @@ impl VmMachineRunningCommon {
                 }
             })
             .map_err(|e| anyhow!("{e:?}"))?;
-        debug!("Waiting for CPU {} to start", bind_id);
-        while !started.load(Ordering::SeqCst) {
+        debug!("Waiting for CPU {} thread", bind_id);
+        while !thread_ok.load(Ordering::SeqCst) {
             std::thread::yield_now();
         }
         Ok(())
