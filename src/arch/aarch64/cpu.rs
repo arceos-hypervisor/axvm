@@ -23,6 +23,7 @@ pub struct HCpu {
     vpercpu: Aarch64PerCpu,
     max_guest_page_table_levels: usize,
     pub pa_range: core::ops::Range<usize>,
+    pub pa_bits: usize,
 }
 
 impl HCpu {
@@ -38,6 +39,7 @@ impl HCpu {
             vpercpu,
             max_guest_page_table_levels: 0,
             pa_range: 0..0,
+            pa_bits: 0,
         }
     }
 
@@ -45,6 +47,7 @@ impl HCpu {
         self.vpercpu.hardware_enable();
         self.max_guest_page_table_levels = self.vpercpu.max_guest_page_table_levels();
         self.pa_range = self.vpercpu.pa_range();
+        self.pa_bits = self.vpercpu.pa_bits();
         Ok(())
     }
 
@@ -102,7 +105,6 @@ impl VCpu {
         let vcpu = arm_vcpu::Aarch64VCpu::new(Aarch64VCpuCreateConfig {
             mpidr_el1: hard_id.raw() as u64,
             dtb_addr: dtb_addr.as_usize(),
-            pt_level: 4,
         })
         .unwrap();
         Ok(VCpu { vcpu, common })
@@ -110,6 +112,10 @@ impl VCpu {
 
     pub fn set_pt_level(&mut self, level: usize) {
         self.vcpu.pt_level = level;
+    }
+
+    pub fn set_pa_bits(&mut self, pa_bits: usize) {
+        self.vcpu.pa_bits = pa_bits;
     }
 }
 

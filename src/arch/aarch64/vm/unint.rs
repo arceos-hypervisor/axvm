@@ -15,6 +15,7 @@ pub struct VmMachineUninit {
     config: AxVMConfig,
     pt_levels: usize,
     pa_max: usize,
+    pa_bits: usize,
 }
 
 impl VmMachineUninitOps for VmMachineUninit {
@@ -25,6 +26,7 @@ impl VmMachineUninitOps for VmMachineUninit {
             config,
             pt_levels: 4,
             pa_max: usize::MAX,
+            pa_bits: 48,
         }
     }
 
@@ -63,13 +65,22 @@ impl VmMachineUninit {
         let vcpu_count = vcpus.len();
 
         for vcpu in &vcpus {
-            let (max_levels, max_pa) =
-                vcpu.with_hcpu(|cpu| (cpu.max_guest_page_table_levels(), cpu.pa_range.end));
+            let (max_levels, max_pa, pa_bits) = vcpu.with_hcpu(|cpu| {
+                (
+                    cpu.max_guest_page_table_levels(),
+                    cpu.pa_range.end,
+                    cpu.pa_bits,
+                )
+            });
             if max_levels < self.pt_levels {
                 self.pt_levels = max_levels;
             }
             if max_pa < self.pa_max {
                 self.pa_max = max_pa;
+            }
+
+            if pa_bits < self.pa_bits {
+                self.pa_bits = pa_bits;
             }
         }
 
@@ -78,8 +89,8 @@ impl VmMachineUninit {
         }
 
         debug!(
-            "VM {} ({}) vCPU count: {}, \n  Max Guest Page Table Levels: {}\n  Max PA: {:#x}",
-            self.config.id, self.config.name, vcpu_count, self.pt_levels, self.pa_max
+            "VM {} ({}) vCPU count: {}, \n  Max Guest Page Table Levels: {}\n  Max PA: {:#x}\n  PA Bits: {}",
+            self.config.id, self.config.name, vcpu_count, self.pt_levels, self.pa_max, self.pa_bits
         );
         Ok(vcpus)
     }
@@ -121,6 +132,7 @@ impl VmMachineUninit {
             vcpu.vcpu.set_entry(kernel_entry).unwrap();
             vcpu.vcpu.set_dtb_addr(dtb_addr).unwrap();
             vcpu.set_pt_level(self.pt_levels);
+            vcpu.set_pa_bits(self.pa_bits);
 
             let setup_config = Aarch64VCpuSetupConfig {
                 passthrough_interrupt: self.config.interrupt_mode()
