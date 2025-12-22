@@ -1,4 +1,4 @@
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::{
     collections::btree_map::BTreeMap,
     os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
@@ -47,7 +47,8 @@ impl VmMachineRunningCommon {
 
     pub fn run_cpu<C: VCpuOp>(&mut self, mut cpu: C) -> anyhow::Result<()> {
         let waiter = self.new_waiter();
-
+        let started = Arc::new(AtomicBool::new(false));
+        let started_clone = started.clone();
         let bind_id = cpu.bind_id();
         std::thread::Builder::new()
             .name(format!("init-cpu-{}", bind_id))
@@ -58,9 +59,11 @@ impl VmMachineRunningCommon {
                     set_current_affinity(AxCpuMask::one_shot(bind_id.raw())),
                     "Initialize CPU affinity failed!"
                 );
+                started_clone.store(true, Ordering::SeqCst);
                 info!("Starting VCpu {} on {}", cpu.hard_id(), bind_id);
                 let res = cpu.run();
                 if let Err(e) = res {
+                    info!("vCPU {} exited with error: {e}", bind_id);
                     if let Some(vm) = waiter.vm.upgrade() {
                         vm.set_err(e);
                     }
@@ -72,7 +75,10 @@ impl VmMachineRunningCommon {
                 }
             })
             .map_err(|e| anyhow!("{e:?}"))?;
-
+        debug!("Waiting for CPU {} to start", bind_id);
+        while !started.load(Ordering::SeqCst) {
+            std::thread::yield_now();
+        }
         Ok(())
     }
 

@@ -145,7 +145,9 @@ impl VCpuOp for VCpu {
                     entry_point,
                     arg,
                 } => {
+                    debug!("vCPU {} requested CPU {} up", self.bind_id(), target_cpu);
                     self.vm()?.with_machine_running_mut(|running| {
+                        debug!("vCPU {} is bringing up CPU {}", self.bind_id(), target_cpu);
                         running.cpu_up(CpuHardId::new(target_cpu as _), entry_point, arg)
                     })??;
                 }

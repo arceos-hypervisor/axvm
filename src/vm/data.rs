@@ -106,51 +106,75 @@ impl VmData {
     }
 
     pub fn init(&self) -> anyhow::Result<()> {
-        let mut status_guard = self.machine.write();
-        match core::mem::replace(&mut *status_guard, VmMachineState::Switching) {
+        let next;
+        let res;
+        let next_state;
+
+        match self.replace_status(VmMachineState::Switching) {
             VmMachineState::Uninit(uninit) => {
-                let init = match uninit.init(self.downgrade()) {
-                    Ok(inited) => inited,
+                match uninit.init(self.downgrade()) {
+                    Ok(inited) => {
+                        next_state = Some(VMStatus::Inited);
+                        res = Ok(());
+                        next = VmMachineState::Inited(inited);
+                    }
                     Err(e) => {
                         self.set_err(RunError::ExitWithError(anyhow!("{e}")));
-                        *status_guard = VmMachineState::Stopped;
-                        self.status.store(VMStatus::Stopped);
-                        return Err(e);
+                        next_state = Some(VMStatus::Stopped);
+                        next = VmMachineState::Stopped;
+                        res = Err(e);
                     }
                 };
-                *status_guard = VmMachineState::Inited(init);
-                self.status.store(VMStatus::Inited);
-                Ok(())
             }
             other => {
-                *status_guard = other;
-                Err(anyhow::anyhow!("VM is not in Uninit state"))
+                next = other;
+                next_state = None;
+                res = Err(anyhow::anyhow!("VM is not in Uninit state"));
             }
         }
+        self.replace_status(next);
+        if let Some(status) = next_state {
+            self.status.store(status);
+        }
+        res
+    }
+
+    fn replace_status(&self, new_status: VmMachineState) -> VmMachineState {
+        let mut status_guard = self.machine.write();
+        core::mem::replace(&mut *status_guard, new_status)
     }
 
     pub fn start(&self) -> anyhow::Result<()> {
         let data = self.downgrade();
-        let mut status_guard = self.machine.write();
-        match core::mem::replace(&mut *status_guard, VmMachineState::Switching) {
+        let next_state;
+        let res;
+        let next = match self.replace_status(VmMachineState::Switching) {
             VmMachineState::Inited(init) => match init.start(data) {
                 Ok(running) => {
-                    *status_guard = VmMachineState::Running(running);
-                    self.status.store(VMStatus::Running);
-                    Ok(())
+                    next_state = Some(VMStatus::Running);
+                    res = Ok(());
+                    VmMachineState::Running(running)
                 }
                 Err(e) => {
                     self.set_err(RunError::ExitWithError(anyhow!("{e}")));
-                    *status_guard = VmMachineState::Stopped;
-                    self.status.store(VMStatus::Stopped);
-                    Err(e)
+
+                    next_state = Some(VMStatus::Stopped);
+                    res = Err(e);
+                    VmMachineState::Stopped
                 }
             },
             other => {
-                *status_guard = other;
-                Err(anyhow::anyhow!("VM is not in Init state"))
+                next_state = None;
+
+                res = Err(anyhow::anyhow!("VM is not in Init state"));
+                other
             }
+        };
+        self.replace_status(next);
+        if let Some(status) = next_state {
+            self.status.store(status);
         }
+        res
     }
 
     pub fn downgrade(&self) -> VmDataWeak {
@@ -163,32 +187,46 @@ impl VmData {
     where
         F: FnOnce(&VmMachineRunning) -> R,
     {
-        let status = self.machine.read();
-        let running = match &*status {
-            VmMachineState::Running(running) => running,
-            _ => {
-                return Err(RunError::ExitWithError(anyhow!(
-                    "VM is not in Running state"
-                )));
-            }
-        };
-        Ok(f(running))
+        loop {
+            let status = self.machine.read();
+            let running = match &*status {
+                VmMachineState::Running(running) => running,
+                VmMachineState::Switching => {
+                    drop(status);
+                    std::thread::yield_now();
+                    continue;
+                }
+                _ => {
+                    return Err(RunError::ExitWithError(anyhow!(
+                        "VM is not in Running state"
+                    )));
+                }
+            };
+            return Ok(f(running));
+        }
     }
 
     pub(crate) fn with_machine_running_mut<F, R>(&self, f: F) -> Result<R, RunError>
     where
         F: FnOnce(&mut VmMachineRunning) -> R,
     {
-        let mut status = self.machine.write();
-        let running = match &mut *status {
-            VmMachineState::Running(running) => running,
-            _ => {
-                return Err(RunError::ExitWithError(anyhow!(
-                    "VM is not in Running state"
-                )));
-            }
-        };
-        Ok(f(running))
+        loop {
+            let mut status = self.machine.write();
+            let running = match &mut *status {
+                VmMachineState::Running(running) => running,
+                VmMachineState::Switching => {
+                    drop(status);
+                    std::thread::yield_now();
+                    continue;
+                }
+                _ => {
+                    return Err(RunError::ExitWithError(anyhow!(
+                        "VM is not in Running state"
+                    )));
+                }
+            };
+            return Ok(f(running));
+        }
     }
 }
 
