@@ -3,7 +3,7 @@ use alloc::format;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use axaddrspace::HostVirtAddr;
-use axerrno::{AxError, AxResult, ax_err, ax_err_type};
+use axerrno::{AxError, AxResult, ax_err, ax_err_type, AxErrorKind};
 use core::alloc::Layout;
 use core::fmt;
 use memory_addr::{align_down_4k, align_up_4k};
@@ -14,7 +14,7 @@ use axdevice::{AxVmDeviceConfig, AxVmDevices};
 use axvcpu::{AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use cpumask::CpuMask;
 
-use crate::config::{AxVMConfig, PhysCpuList};
+use crate::config::{AxVMConfig, PhysCpuList, VmMemMappingType};
 use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 use crate::{AxVMHal, has_hardware_support};
 
@@ -64,7 +64,7 @@ impl VMMemoryRegion {
 
 struct AxVMInnerMut<H: AxVMHal> {
     // Todo: use more efficient lock.
-    address_space: AddrSpace<H::PagingHandler>,
+    address_space: Arc<Mutex<AddrSpace<H::PagingHandler>>>,
     memory_regions: Vec<VMMemoryRegion>,
     config: AxVMConfig,
     vm_status: VMStatus,
@@ -133,17 +133,23 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     /// Creates a new VM with the given configuration.
     /// Returns an error if the configuration is invalid.
     /// The VM is not started until `boot` is called.
-    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>> {
-        let address_space =
-            AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
+    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>>
+    where
+        <H as AxVMHal>::PagingHandler: Send + 'static,
+    {
+        let vcpu_id_pcpu_sets = config.phys_cpu_ls.get_vcpu_affinities_pcpu_ids();
+
+        let address_space = Arc::new(Mutex::new(
+            AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?
+        ));
 
         let result = Arc::new(Self {
             id: config.id(),
             inner_const: Once::new(),
             inner_mut: Mutex::new(AxVMInnerMut {
                 address_space,
-                config,
                 memory_regions: Vec::new(),
+                config,
                 vm_status: VMStatus::Loading,
                 _marker: core::marker::PhantomData,
             }),
@@ -161,7 +167,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     }
 
     /// Sets up the VM before booting.
-    pub fn init(&self) -> AxResult {
+    pub fn init(&self) -> AxResult
+    where
+        <H as AxVMHal>::PagingHandler: Send + 'static,
+    {
         let mut inner_mut = self.inner_mut.lock();
 
         let dtb_addr = inner_mut.config.image_config().dtb_load_gpa;
@@ -191,6 +200,75 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 phys_cpu_set,
                 arch_config,
             )?));
+        }
+        let address_space = inner_mut.address_space.clone();
+
+        for mem_region in inner_mut.config.memory_regions() {
+            let mapping_flags = MappingFlags::from_bits(mem_region.flags).ok_or_else(|| {
+                ax_err_type!(
+                    InvalidInput,
+                    format!("Illegal flags {:?}", mem_region.flags)
+                )
+            })?;
+
+            // Check mapping flags.
+            if mapping_flags.contains(MappingFlags::DEVICE) {
+                warn!(
+                    "Do not include DEVICE flag in memory region flags, it should be configured in pass_through_devices"
+                );
+                continue;
+            }
+
+            info!(
+                "Setting up memory region: [{:#x}~{:#x}] {:?}",
+                mem_region.gpa,
+                mem_region.gpa + mem_region.size,
+                mapping_flags
+            );
+
+            // Handle ram region.
+            match mem_region.map_type {
+                VmMemMappingType::MapIdentical => {
+                    match address_space.lock().map_linear(
+                        GuestPhysAddr::from(mem_region.gpa),
+                        HostPhysAddr::from(mem_region.gpa),
+                        mem_region.size,
+                        mapping_flags,
+                    ) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            if e != AxErrorKind::AlreadyExists {
+                                return Err(e.into());
+                            }
+                            warn!("Memory region [{:#x}] already mapped, skipping...", mem_region.gpa);
+                        }
+                    }
+
+
+                }
+                VmMemMappingType::MapAlloc => {
+                    // Note: currently we use `map_alloc`,
+                    // which allocates real physical memory in units of physical page frames,
+                    // which may not be contiguous!!!
+                    match address_space.lock().map_alloc(
+                        GuestPhysAddr::from(mem_region.gpa),
+                        mem_region.size,
+                        mapping_flags,
+                        true,
+                    ) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            if e != AxErrorKind::AlreadyExists {
+                                return Err(e.into());
+                            }
+                            warn!("Memory region [{:#x}] already mapped, skipping...", mem_region.gpa);
+                        }
+                    }
+                }
+                VmMemMappingType::MapReserved => {
+                    warn!("MapReserved memory mapping type is not yet implemented");
+                }
+            }
         }
 
         let mut pt_dev_region = Vec::new();
@@ -241,7 +319,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 });
 
         for (gpa, len) in &pt_dev_region {
-            inner_mut.address_space.map_linear(
+            address_space.lock().map_linear(
                 GuestPhysAddr::from(*gpa),
                 HostPhysAddr::from(*gpa),
                 *len,
@@ -252,9 +330,80 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             )?;
         }
 
-        let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
-            emu_configs: inner_mut.config.emu_devices().to_vec(),
-        });
+
+        let read_guest_mem = {
+            let address_space = address_space.clone();
+            Arc::new(move |addr: GuestPhysAddr, len: usize| -> AxResult<Vec<u8>> {
+                let addr_space = address_space.lock();
+                match addr_space.translated_byte_buffer(addr, len) {
+                    Some(buffers) => {
+                        let mut data_bytes = Vec::with_capacity(len);
+                        for chunk in buffers {
+                            let remaining = len - data_bytes.len();
+                            let chunk_size = remaining.min(chunk.len());
+                            data_bytes.extend_from_slice(&chunk[..chunk_size]);
+                            if data_bytes.len() >= len {
+                                break;
+                            }
+                        }
+                        if data_bytes.len() < len {
+                            return ax_err!(
+                                InvalidInput,
+                                "Insufficient data in guest memory to read the requested object"
+                            );
+                        }
+                        Ok(data_bytes)
+                    }
+                    None => ax_err!(
+                        InvalidInput,
+                        "Failed to translate guest physical address or insufficient buffer size"
+                    ),
+                }
+            })
+        };
+
+        let write_guest_mem = {
+            let address_space = address_space.clone();
+            Arc::new(move |addr: GuestPhysAddr, data: &[u8]| -> AxResult<()> {
+                let addr_space = address_space.lock();
+                match addr_space.translated_byte_buffer(addr, data.len()) {
+                    Some(mut buffer) => {
+                        let mut copied_bytes = 0;
+                        for (_i, chunk) in buffer.iter_mut().enumerate() {
+                            let end = copied_bytes + chunk.len();
+                            let len = chunk.len();
+                            if copied_bytes >= data.len() {
+                                break;
+                            }
+                            let src_end = (copied_bytes + len).min(data.len());
+                            chunk[..src_end - copied_bytes].copy_from_slice(&data[copied_bytes..src_end]);
+                            copied_bytes += len;
+                        }
+                        Ok(())
+                    }
+                    None => ax_err!(InvalidInput, "Failed to translate guest physical address"),
+                }
+            })
+        };
+
+        let inject_irq = {
+            let vm_id = self.id();
+            Arc::new(move |irq: usize| -> AxResult {
+                // Inject to vCPU 0 by default for now
+                // Ideally we should have a way to specify target vCPU or use a round-robin
+                H::inject_irq_to_vcpu(vm_id, 0, irq)
+            })
+        };
+
+        let mut devices = axdevice::AxVmDevices::new(
+            AxVmDeviceConfig {
+                emu_configs: inner_mut.config.emu_devices().to_vec(),
+                virtio_blk_configs: inner_mut.config.virtio_blk_mmio().to_vec(),
+            },
+            read_guest_mem,
+            write_guest_mem,
+            inject_irq,
+        );
 
         #[cfg(target_arch = "aarch64")]
         {
@@ -328,7 +477,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
             vcpu.setup(
                 entry,
-                inner_mut.address_space.page_table_root(),
+                inner_mut.address_space.lock().page_table_root(),
                 setup_config,
             )?;
         }
@@ -373,7 +522,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
     /// Returns the base address of the two-stage address translation page table for the VM.
     pub fn ept_root(&self) -> HostPhysAddr {
-        self.inner_mut.lock().address_space.page_table_root()
+        self.inner_mut.lock().address_space.lock().page_table_root()
     }
 
     /// Returns to the VM's configuration.
@@ -401,6 +550,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let g = self.inner_mut.lock();
         let image_load_hva = g
             .address_space
+            .lock()
             .translated_byte_buffer(image_load_gpa, image_size)
             .expect("Failed to translate kernel image load address");
         Ok(image_load_hva)
@@ -532,6 +682,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     .inner_mut
                     .lock()
                     .address_space
+                    .lock()
                     .handle_page_fault(*addr, *access_flags),
                 _ => false,
             };
@@ -597,13 +748,14 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         self.inner_mut
             .lock()
             .address_space
+            .lock()
             .map_linear(gpa, hpa, size, flags)?;
         Ok(())
     }
 
     /// Unmaps a region of guest physical memory.
     pub fn unmap_region(&self, gpa: GuestPhysAddr, size: usize) -> AxResult {
-        self.inner_mut.lock().address_space.unmap(gpa, size)?;
+        self.inner_mut.lock().address_space.lock().unmap(gpa, size)?;
         Ok(())
     }
 
@@ -617,7 +769,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         }
 
         let g = self.inner_mut.lock();
-        match g.address_space.translated_byte_buffer(gpa_ptr, size) {
+        match g.address_space.lock().translated_byte_buffer(gpa_ptr, size) {
             Some(buffers) => {
                 let mut data_bytes = Vec::with_capacity(size);
                 for chunk in buffers {
@@ -653,6 +805,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             .inner_mut
             .lock()
             .address_space
+            .lock()
             .translated_byte_buffer(gpa_ptr, core::mem::size_of::<T>())
         {
             Some(mut buffer) => {
@@ -720,7 +873,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let gpa = gpa.unwrap_or_else(|| hpa.as_usize().into());
 
         let mut g = self.inner_mut.lock();
-        g.address_space.map_linear(
+        g.address_space.lock().map_linear(
             gpa,
             hpa,
             layout.size(),
@@ -750,7 +903,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             "Cannot allocate zero-sized memory region"
         );
         let mut g = self.inner_mut.lock();
-        g.address_space.map_linear(
+        g.address_space.lock().map_linear(
             gpa.unwrap(),
             gpa.unwrap().as_usize().into(),
             layout.size(),
@@ -801,7 +954,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 region.size()
             );
             // Unmap the region from guest physical address space
-            if let Err(e) = inner_mut.address_space.unmap(region.gpa, region.size()) {
+            if let Err(e) = inner_mut.address_space.lock().unmap(region.gpa, region.size()) {
                 warn!(
                     "VM[{}] failed to unmap region at GPA={:#x}: {:?}",
                     self.id(),
@@ -846,7 +999,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             "VM[{}] clearing remaining address space mappings",
             self.id()
         );
-        inner_mut.address_space.clear();
+        inner_mut.address_space.lock().clear();
 
         // Release the lock before accessing inner_const
         drop(inner_mut);

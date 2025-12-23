@@ -25,9 +25,9 @@ percpu = { version = "0.2.0", features = ["arm-el2"] }
 # System dependent modules provided by ArceOS-Hypervisor.
 axvcpu = "0.1"
 axaddrspace = "0.1"
-axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git" }
+axdevice = { git = "https://github.com/DINGBROK423/axdevice.git", branch = "virt-blk", default-features = false }
 axdevice_base = "0.1"
-axvmconfig = { version = "0.1", default-features = false }
+axvmconfig = { git = "https://github.com/DINGBROK423/axvmconfig.git", branch = "merge_add_virtio_mmio", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_vcpu = "0.1"
@@ -40,5 +40,5 @@ arm_vcpu = { git = "https://github.com/arceos-hypervisor/arm_vcpu", branch = "ne
 arm_vgic = { version = "0.1", features = ["vgicv3"] }
 
 [patch.crates-io]
-axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "next" }
+axvmconfig = { git = "https://github.com/DINGBROK423/axvmconfig.git", branch = "merge_add_virtio_mmio", default-features = false }
 axvcpu = {git = "https://github.com/arceos-hypervisor/axvcpu.git", branch = "next"}
