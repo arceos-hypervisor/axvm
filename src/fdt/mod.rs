@@ -107,28 +107,27 @@ impl FdtBuilder {
             .get_by_path_mut("/chosen")
             .ok_or_else(|| anyhow::anyhow!("No /chosen node found"))?;
 
-        let Some(initrd) = initrd else {
+        if let Some(initrd) = initrd {
+            let cells = node.ctx.parent_address_cells();
+            let (initrd_start, initrd_end) = (initrd.0.as_usize(), initrd.0.as_usize() + initrd.1);
+
+            let mut prop_s = Property::new("linux,initrd-start", vec![]);
+            let mut prop_e = Property::new("linux,initrd-end", vec![]);
+
+            if cells == 2 {
+                prop_s.set_u32_ls(&[initrd_start as u32]);
+                prop_e.set_u32_ls(&[initrd_end as u32]);
+            } else {
+                prop_s.set_u64(initrd_start as _);
+                prop_e.set_u64(initrd_end as _);
+            }
+
+            node.node.add_property(prop_s);
+            node.node.add_property(prop_e);
+        } else {
             node.node.remove_property("linux,initrd-start");
             node.node.remove_property("linux,initrd-end");
-            return Ok(());
         };
-
-        let cells = node.ctx.parent_address_cells();
-        let (initrd_start, initrd_end) = (initrd.0.as_usize(), initrd.0.as_usize() + initrd.1);
-
-        let mut prop_s = Property::new("linux,initrd-start", vec![]);
-        let mut prop_e = Property::new("linux,initrd-end", vec![]);
-
-        if cells == 2 {
-            prop_s.set_u32_ls(&[initrd_start as u32]);
-            prop_e.set_u32_ls(&[initrd_end as u32]);
-        } else {
-            prop_s.set_u64(initrd_start as _);
-            prop_e.set_u64(initrd_end as _);
-        }
-
-        node.node.add_property(prop_s);
-        node.node.add_property(prop_e);
 
         if let Some(args) = node.node.get_property_mut("bootargs")
             && let Some(s) = args.as_str()
