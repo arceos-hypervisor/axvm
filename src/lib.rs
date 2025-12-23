@@ -22,8 +22,8 @@ const TASK_STACK_SIZE: usize = 0x40000; // 256 KB
 pub(crate) mod arch;
 
 mod fdt;
-mod vm;
 mod vcpu;
+mod vm;
 
 pub mod config;
 pub mod vhal;
