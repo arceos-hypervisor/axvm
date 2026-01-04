@@ -21,7 +21,7 @@ use crate::vcpu::AxArchVCpuImpl;
 use crate::{AxVMHal, has_hardware_support};
 
 const VM_ASPACE_BASE: usize = 0x0;
-const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
+const VM_ASPACE_SIZE: usize = 1 << 48;
 
 /// A vCPU with architecture-independent interface.
 #[allow(type_alias_bounds)]
