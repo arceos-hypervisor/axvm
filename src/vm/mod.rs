@@ -7,7 +7,7 @@ mod machine;
 
 pub(crate) use addrspace::*;
 pub use define::*;
-pub(crate) use machine::*;
+pub use machine::*;
 
 pub struct Vm {
     data: VmData,
@@ -43,5 +43,15 @@ impl Vm {
 
     pub fn wait(&self) -> anyhow::Result<()> {
         self.data.wait()
+    }
+
+    /// Get total memory size in bytes.
+    pub fn memory_size(&self) -> usize {
+        self.data.memory_size
+    }
+
+    /// Get vCPU count.
+    pub fn vcpu_num(&self) -> usize {
+        self.data.vcpu_num
     }
 }
