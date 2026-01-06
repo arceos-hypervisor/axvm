@@ -20,17 +20,35 @@ pub(crate) struct VmDataInner {
     pub name: String,
     pub machine: RwLock<VmMachineState>,
     pub status: AtomicState,
+    pub memory_size: usize,
+    pub vcpu_num: usize,
     error: RwLock<Option<RunError>>,
 }
 
 impl VmDataInner {
     pub fn new(config: AxVMConfig) -> Self {
+        // Calculate total memory size
+        let memory_size = config
+            .memory_regions
+            .iter()
+            .map(|region| match region {
+                crate::config::MemoryKind::Identical { size } => *size,
+                crate::config::MemoryKind::Reserved { size, .. } => *size,
+                crate::config::MemoryKind::Vmem { size, .. } => *size,
+            })
+            .sum();
+
+        // Get vCPU count
+        let vcpu_num = config.cpu_num.num();
+
         Self {
             id: config.id.into(),
             name: config.name.clone(),
             machine: RwLock::new(VmMachineState::Uninit(VmMachineUninit::new(config))),
             status: AtomicState::new(VMStatus::Uninit),
             error: RwLock::new(None),
+            memory_size,
+            vcpu_num,
         }
     }
 
