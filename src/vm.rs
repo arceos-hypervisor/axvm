@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use axerrno::{AxResult, ax_err, ax_err_type};
-use memory_addr::{align_up, is_aligned};
+use memory_addr::{MemoryAddr, align_up, is_aligned};
 use page_table_multiarch::PageSize;
 use spin::Mutex;
 
@@ -525,18 +525,43 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         self.inner_mut.address_space.lock().unmap(gpa, size)
     }
 
+    /// Reads an object of type `T` from the guest physical address.
     pub fn read_from_guest_of<T>(&self, gpa_ptr: GuestPhysAddr) -> AxResult<T> {
-        let addr_space = self.inner_mut.address_space.lock();
+        let size = core::mem::size_of::<T>();
 
-        match addr_space.translated_byte_buffer(gpa_ptr, core::mem::size_of::<T>()) {
-            Some(buffer) => {
-                let bytes = unsafe {
-                    core::slice::from_raw_parts(buffer.as_ptr(), core::mem::size_of::<T>())
+        // Ensure the address is properly aligned for the type.
+        if gpa_ptr.as_usize() % core::mem::align_of::<T>() != 0 {
+            return ax_err!(InvalidInput, "Unaligned guest physical address");
+        }
+
+        let addr_space = self.inner_mut.address_space.lock();
+        match addr_space.translated_byte_buffer(gpa_ptr, size) {
+            Some(buffers) => {
+                let mut data_bytes = Vec::with_capacity(size);
+                for chunk in buffers {
+                    let remaining = size - data_bytes.len();
+                    let chunk_size = remaining.min(chunk.len());
+                    data_bytes.extend_from_slice(&chunk[..chunk_size]);
+                    if data_bytes.len() >= size {
+                        break;
+                    }
+                }
+                if data_bytes.len() < size {
+                    return ax_err!(
+                        InvalidInput,
+                        "Insufficient data in guest memory to read the requested object"
+                    );
+                }
+                let data: T = unsafe {
+                    // Use `ptr::read_unaligned` for safety in case of unaligned memory.
+                    core::ptr::read_unaligned(data_bytes.as_ptr() as *const T)
                 };
-                let data: T = unsafe { core::ptr::read(bytes.as_ptr() as *const T) };
                 Ok(data)
             }
-            None => ax_err!(InvalidInput, "Failed to translate guest physical address"),
+            None => ax_err!(
+                InvalidInput,
+                "Failed to translate guest physical address or insufficient buffer size"
+            ),
         }
     }
 
