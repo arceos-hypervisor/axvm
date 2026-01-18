@@ -15,6 +15,7 @@ use axvcpu::{AxVCpu, AxVCpuExitReason};
 use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, PhysCpuList};
+use crate::hal::PagingHandlerImpl;
 use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 use crate::{AxVMHal, has_hardware_support};
 
@@ -62,13 +63,12 @@ impl VMMemoryRegion {
     }
 }
 
-struct AxVMInnerMut<H: AxVMHal> {
+struct AxVMInnerMut {
     // Todo: use more efficient lock.
-    address_space: AddrSpace<H::PagingHandler>,
+    address_space: AddrSpace<PagingHandlerImpl>,
     memory_regions: Vec<VMMemoryRegion>,
     config: AxVMConfig,
     vm_status: VMStatus,
-    _marker: core::marker::PhantomData<H>,
 }
 
 /// VM status enumeration representing the lifecycle states of a virtual machine
@@ -126,7 +126,8 @@ const TEMP_MAX_VCPU_NUM: usize = 64;
 pub struct AxVM<H: AxVMHal> {
     id: usize,
     inner_const: Once<AxVMInnerConst>,
-    inner_mut: Mutex<AxVMInnerMut<H>>,
+    inner_mut: Mutex<AxVMInnerMut>,
+    _marker: core::marker::PhantomData<H>,
 }
 
 impl<H: AxVMHal> AxVM<H> {
@@ -146,8 +147,8 @@ impl<H: AxVMHal> AxVM<H> {
                 config,
                 memory_regions: Vec::new(),
                 vm_status: VMStatus::Loading,
-                _marker: core::marker::PhantomData,
             }),
+            _marker: core::marker::PhantomData,
         });
 
         info!("VM created: id={}", result.id());
@@ -716,7 +717,7 @@ impl<H: AxVMHal> AxVM<H> {
         let s = unsafe { core::slice::from_raw_parts_mut(hva, layout.size()) };
         let hva = HostVirtAddr::from_mut_ptr_of(hva);
 
-        let hpa = H::virt_to_phys(hva);
+        let hpa = axvisor_api::memory::virt_to_phys(hva);
 
         let gpa = gpa.unwrap_or_else(|| hpa.as_usize().into());
 

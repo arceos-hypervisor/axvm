@@ -1,10 +1,12 @@
 use axaddrspace::{HostPhysAddr, HostVirtAddr};
 use axerrno::AxResult;
+use memory_addr::{PhysAddr, VirtAddr};
+use page_table_multiarch::PagingHandler;
 
 /// The interfaces which the underlying software (kernel or hypervisor) must implement.
 pub trait AxVMHal: Sized {
     /// The low-level **OS-dependent** helpers that must be provided for physical address management.
-    type PagingHandler: page_table_multiarch::PagingHandler;
+    type PagingHandler: PagingHandler;
 
     /// Converts a virtual address to the corresponding physical address.
     fn virt_to_phys(vaddr: HostVirtAddr) -> HostPhysAddr;
@@ -33,4 +35,20 @@ pub trait AxVMHal: Sized {
     ///
     /// Returns an error if the VCPU is not found.
     fn inject_irq_to_vcpu(vm_id: usize, vcpu_id: usize, irq: usize) -> AxResult;
+}
+
+pub struct PagingHandlerImpl;
+
+impl PagingHandler for PagingHandlerImpl {
+    fn alloc_frame() -> Option<PhysAddr> {
+        axvisor_api::memory::alloc_frame()
+    }
+
+    fn dealloc_frame(paddr: PhysAddr) {
+        axvisor_api::memory::dealloc_frame(paddr)
+    }
+
+    fn phys_to_virt(paddr: PhysAddr) -> VirtAddr {
+        axvisor_api::memory::phys_to_virt(paddr)
+    }
 }
