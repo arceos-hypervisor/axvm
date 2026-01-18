@@ -27,7 +27,7 @@ pub use vm::VMMemoryRegion;
 pub use vm::VMStatus;
 
 /// The architecture-independent per-CPU type.
-pub type AxVMPerCpu<U> = axvcpu::AxPerCpu<vcpu::AxVMArchPerCpuImpl<U>>;
+pub type AxVMPerCpu = axvcpu::AxPerCpu<vcpu::AxVMArchPerCpuImpl>;
 
 /// Whether the hardware has virtualization support.
 pub fn has_hardware_support() -> bool {

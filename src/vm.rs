@@ -11,7 +11,7 @@ use spin::{Mutex, Once};
 
 use axaddrspace::{AddrSpace, GuestPhysAddr, HostPhysAddr, MappingFlags, device::AccessWidth};
 use axdevice::{AxVmDeviceConfig, AxVmDevices};
-use axvcpu::{AxVCpu, AxVCpuExitReason, AxVCpuHal};
+use axvcpu::{AxVCpu, AxVCpuExitReason};
 use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, PhysCpuList};
@@ -26,22 +26,22 @@ const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
 
 /// A vCPU with architecture-independent interface.
 #[allow(type_alias_bounds)]
-type VCpu<U: AxVCpuHal> = AxVCpu<AxArchVCpuImpl<U>>;
+type VCpu = AxVCpu<AxArchVCpuImpl>;
 /// A reference to a vCPU.
 #[allow(type_alias_bounds)]
-pub type AxVCpuRef<U: AxVCpuHal> = Arc<VCpu<U>>;
+pub type AxVCpuRef = Arc<VCpu>;
 /// A reference to a VM.
 #[allow(type_alias_bounds)]
-pub type AxVMRef<H: AxVMHal, U: AxVCpuHal> = Arc<AxVM<H, U>>; // we know the bound is not enforced here, we keep it for clarity
+pub type AxVMRef<H: AxVMHal> = Arc<AxVM<H>>; // we know the bound is not enforced here, we keep it for clarity
 
-struct AxVMInnerConst<U: AxVCpuHal> {
+struct AxVMInnerConst {
     phys_cpu_ls: PhysCpuList,
-    vcpu_list: Box<[AxVCpuRef<U>]>,
+    vcpu_list: Box<[AxVCpuRef]>,
     devices: AxVmDevices,
 }
 
-unsafe impl<U: AxVCpuHal> Send for AxVMInnerConst<U> {}
-unsafe impl<U: AxVCpuHal> Sync for AxVMInnerConst<U> {}
+unsafe impl Send for AxVMInnerConst {}
+unsafe impl Sync for AxVMInnerConst {}
 
 #[derive(Debug, Clone)]
 pub struct VMMemoryRegion {
@@ -123,19 +123,20 @@ impl fmt::Display for VMStatus {
 const TEMP_MAX_VCPU_NUM: usize = 64;
 
 /// A Virtual Machine.
-pub struct AxVM<H: AxVMHal, U: AxVCpuHal> {
+pub struct AxVM<H: AxVMHal> {
     id: usize,
-    inner_const: Once<AxVMInnerConst<U>>,
+    inner_const: Once<AxVMInnerConst>,
     inner_mut: Mutex<AxVMInnerMut<H>>,
 }
 
-impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
+impl<H: AxVMHal> AxVM<H> {
     /// Creates a new VM with the given configuration.
     /// Returns an error if the configuration is invalid.
     /// The VM is not started until `boot` is called.
-    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H, U>> {
+    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H>> {
         let address_space =
-            AddrSpace::new_empty(GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
+            // TODO: read level from config
+            AddrSpace::new_empty(4, GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
 
         let result = Arc::new(Self {
             id: config.id(),
@@ -179,7 +180,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             #[cfg(target_arch = "riscv64")]
             let arch_config = AxVCpuCreateConfig {
                 hart_id: vcpu_id as _,
-                dtb_addr: dtb_addr.unwrap_or_default(),
+                dtb_addr: dtb_addr.unwrap_or_default().into(),
             };
             #[cfg(target_arch = "x86_64")]
             let arch_config = AxVCpuCreateConfig::default();
@@ -316,7 +317,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 }
             };
             #[cfg(not(target_arch = "aarch64"))]
-            let setup_config = <AxArchVCpuImpl<U> as axvcpu::AxArchVCpu>::SetupConfig::default();
+            let setup_config = <AxArchVCpuImpl as axvcpu::AxArchVCpu>::SetupConfig::default();
 
             let entry = if vcpu.id() == 0 {
                 inner_mut.config.bsp_entry()
@@ -349,7 +350,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     /// Retrieves the vCPU corresponding to the given vcpu_id for the VM.
     /// Returns None if the vCPU does not exist.
     #[inline]
-    pub fn vcpu(&self, vcpu_id: usize) -> Option<AxVCpuRef<U>> {
+    pub fn vcpu(&self, vcpu_id: usize) -> Option<AxVCpuRef> {
         self.vcpu_list().get(vcpu_id).cloned()
     }
 
@@ -359,7 +360,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         self.inner_const().vcpu_list.len()
     }
 
-    fn inner_const(&self) -> &AxVMInnerConst<U> {
+    fn inner_const(&self) -> &AxVMInnerConst {
         self.inner_const
             .get()
             .expect("VM inner_const not initialized")
@@ -367,7 +368,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
 
     /// Returns a reference to the list of vCPUs corresponding to the VM.
     #[inline]
-    pub fn vcpu_list(&self) -> &[AxVCpuRef<U>] {
+    pub fn vcpu_list(&self) -> &[AxVCpuRef] {
         &self.inner_const().vcpu_list
     }
 
@@ -879,7 +880,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
     }
 }
 
-impl<H: AxVMHal, U: AxVCpuHal> Drop for AxVM<H, U> {
+impl<H: AxVMHal> Drop for AxVM<H> {
     fn drop(&mut self) {
         info!("Dropping VM[{}]", self.id());
 
