@@ -4,6 +4,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use axaddrspace::HostVirtAddr;
 use axerrno::{AxError, AxResult, ax_err, ax_err_type};
+use axvisor_api::vmm::InterruptVector;
 use core::alloc::Layout;
 use core::fmt;
 use memory_addr::{align_down_4k, align_up_4k};
@@ -17,7 +18,7 @@ use cpumask::CpuMask;
 use crate::config::{AxVMConfig, PhysCpuList};
 use crate::hal::PagingHandlerImpl;
 use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
-use crate::{AxVMHal, has_hardware_support};
+use crate::has_hardware_support;
 
 #[cfg(target_arch = "aarch64")]
 use crate::vcpu::get_sysreg_device;
@@ -26,14 +27,11 @@ const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
 
 /// A vCPU with architecture-independent interface.
-#[allow(type_alias_bounds)]
 type VCpu = AxVCpu<AxArchVCpuImpl>;
 /// A reference to a vCPU.
-#[allow(type_alias_bounds)]
 pub type AxVCpuRef = Arc<VCpu>;
 /// A reference to a VM.
-#[allow(type_alias_bounds)]
-pub type AxVMRef<H: AxVMHal> = Arc<AxVM<H>>; // we know the bound is not enforced here, we keep it for clarity
+pub type AxVMRef = Arc<AxVM>;
 
 struct AxVMInnerConst {
     phys_cpu_ls: PhysCpuList,
@@ -123,18 +121,17 @@ impl fmt::Display for VMStatus {
 const TEMP_MAX_VCPU_NUM: usize = 64;
 
 /// A Virtual Machine.
-pub struct AxVM<H: AxVMHal> {
+pub struct AxVM {
     id: usize,
     inner_const: Once<AxVMInnerConst>,
     inner_mut: Mutex<AxVMInnerMut>,
-    _marker: core::marker::PhantomData<H>,
 }
 
-impl<H: AxVMHal> AxVM<H> {
+impl AxVM {
     /// Creates a new VM with the given configuration.
     /// Returns an error if the configuration is invalid.
     /// The VM is not started until `boot` is called.
-    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef<H>> {
+    pub fn new(config: AxVMConfig) -> AxResult<AxVMRef> {
         let address_space =
             // TODO: read level from config
             AddrSpace::new_empty(4, GuestPhysAddr::from(VM_ASPACE_BASE), VM_ASPACE_SIZE)?;
@@ -148,7 +145,6 @@ impl<H: AxVMHal> AxVM<H> {
                 memory_regions: Vec::new(),
                 vm_status: VMStatus::Loading,
             }),
-            _marker: core::marker::PhantomData,
         });
 
         info!("VM created: id={}", result.id());
@@ -558,13 +554,12 @@ impl<H: AxVMHal> AxVM<H> {
         // It is not supported to inject interrupt to a vcpu in another VM yet.
         //
         // It may be supported in the future, as a essential feature for cross-VM communication.
-        if H::current_vm_id() != self.id() {
+        let current_running_vm = axvisor_api::vmm::current_vm_id();
+        if current_running_vm != vm_id {
             panic!("Injecting interrupt to a vcpu in another VM is not supported");
         }
 
-        for target_vcpu in &targets {
-            H::inject_irq_to_vcpu(vm_id, target_vcpu, irq)?;
-        }
+        axvisor_api::vmm::inject_interrupt_to_cpus(vm_id, targets, irq as InterruptVector);
 
         Ok(())
     }
@@ -881,7 +876,7 @@ impl<H: AxVMHal> AxVM<H> {
     }
 }
 
-impl<H: AxVMHal> Drop for AxVM<H> {
+impl Drop for AxVM {
     fn drop(&mut self) {
         info!("Dropping VM[{}]", self.id());
 

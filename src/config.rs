@@ -11,15 +11,6 @@ pub use axvmconfig::{
     VMInterruptMode, VMType, VmMemConfig, VmMemMappingType,
 };
 
-// /// A part of `AxVCpuConfig`, which represents an architecture-dependent `VCpu`.
-// ///
-// /// The concrete type of configuration is defined in `AxArchVCpuImpl`.
-// #[derive(Clone, Copy, Debug, Default)]
-// pub struct AxArchVCpuConfig<H: AxVMHal> {
-//     pub create_config: <AxArchVCpuImpl<H> as AxArchVCpu>::CreateConfig,
-//     pub setup_config: <AxArchVCpuImpl<H> as AxArchVCpu>::SetupConfig,
-// }
-
 /// A part of `AxVMConfig`, which represents a `VCpu`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AxVCpuConfig {
