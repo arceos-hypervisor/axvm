@@ -17,8 +17,8 @@ use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, PhysCpuList};
 use crate::hal::PagingHandlerImpl;
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 use crate::has_hardware_support;
+use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 
 #[cfg(target_arch = "aarch64")]
 use crate::vcpu::get_sysreg_device;
