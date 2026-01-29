@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use fdt_edit::{Fdt, FdtData, Node, Property, RegInfo, Status};
 
-use crate::{GuestMemory, GuestPhysAddr, vcpu::VCpuCommon, vhal::cpu::CpuHardId};
+use crate::{GuestMemory, GuestPhysAddr, vcpu::VCpuCommon, hal::cpu::CpuHardId};
 
 pub(crate) fn fdt_edit() -> Option<Fdt> {
     let addr = axhal::dtb::get_bootarg();

@@ -1,12 +1,12 @@
-use core::sync::atomic::AtomicUsize;
-use core::sync::atomic::Ordering;
-
-use axhal;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use alloc::boxed::Box;
+
+use axhal;
 use kspin::SpinNoIrq;
-use lazyinit::LazyInit;
 use timer_list::{TimeValue, TimerEvent, TimerList};
+
+use crate::hal::percpu::PerCpuSet;
 
 static TOKEN: AtomicUsize = AtomicUsize::new(0);
 // const PERIODIC_INTERVAL_NANOS: u64 = axhal::time::NANOS_PER_SEC / axconfig::TICKS_PER_SEC as u64;
@@ -40,8 +40,7 @@ impl TimerEvent for VmmTimerEvent {
     }
 }
 
-#[percpu::def_percpu]
-static TIMER_LIST: LazyInit<SpinNoIrq<TimerList<VmmTimerEvent>>> = LazyInit::new();
+static TIMER_LIST: PerCpuSet<SpinNoIrq<TimerList<VmmTimerEvent>>> = PerCpuSet::new();
 
 /// Registers a new timer that will execute at the specified deadline
 ///
@@ -61,8 +60,7 @@ where
         deadline,
         TimeValue::from_nanos(deadline)
     );
-    let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
-    let mut timers = timer_list.lock();
+    let mut timers = TIMER_LIST.lock();
     let token = TOKEN.fetch_add(1, Ordering::Release);
     let event = VmmTimerEvent::new(token, handler);
     timers.set(TimeValue::from_nanos(deadline), event);
@@ -74,19 +72,15 @@ where
 /// # Parameters
 /// - `token`: The unique token of the timer to cancel.
 pub fn cancel_timer(token: usize) {
-    let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
-    let mut timers = timer_list.lock();
+    let mut timers = TIMER_LIST.lock();
     timers.cancel(|event| event.token == token);
 }
 
 /// Check and process any pending timer events
 pub fn check_events() {
-    // info!("Checking timer events...");
-    // info!("now is {:#?}", axhal::time::wall_time());
-    let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
     loop {
         let now = axhal::time::wall_time();
-        let event = timer_list.lock().expire_one(now);
+        let event = TIMER_LIST.lock().expire_one(now);
         if let Some((_deadline, event)) = event {
             trace!("pick one {_deadline:#?} to handle!!!");
             event.callback(now);
@@ -94,6 +88,10 @@ pub fn check_events() {
             break;
         }
     }
+}
+
+pub fn init() {
+    TIMER_LIST.init_with_value(|_| SpinNoIrq::new(TimerList::new()));
 }
 
 // /// Schedule the next timer event based on the periodic interval
@@ -104,10 +102,3 @@ pub fn check_events() {
 //     debug!("PHY deadline {} !!!", deadline);
 //     axhal::time::set_oneshot_timer(deadline);
 // }
-
-/// Initialize the hypervisor timer system
-pub fn init_percpu() {
-    info!("Initing HV Timer...");
-    let timer_list = unsafe { TIMER_LIST.current_ref_mut_raw() };
-    timer_list.init_once(SpinNoIrq::new(TimerList::new()));
-}

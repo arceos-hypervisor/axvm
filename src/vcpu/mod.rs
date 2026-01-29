@@ -2,7 +2,7 @@ use crate::{
     CpuId, RunError, VmId,
     arch::HCpu,
     data::{VmData, VmDataWeak},
-    vhal::cpu::{CpuHardId, HCpuExclusive},
+    hal::cpu::{CpuHardId, HCpuExclusive},
 };
 
 pub trait VCpuOp: core::fmt::Debug + Send + 'static {

@@ -26,15 +26,15 @@ mod vcpu;
 mod vm;
 
 pub mod config;
-pub mod vhal;
+pub(crate) mod hal;
 
 pub use axvm_types::addr::*;
 pub use config::AxVMConfig;
-pub use vhal::cpu::CpuId;
+pub use hal::cpu::{CpuHardId, CpuId};
 pub use vm::*;
 
 /// Enable hardware virtualization support.
 pub fn enable_viretualization() -> anyhow::Result<()> {
-    vhal::init()?;
+    hal::init()?;
     Ok(())
 }

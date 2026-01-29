@@ -1,30 +1,43 @@
 use alloc::vec::Vec;
-use axstd::{
+use bitmap_allocator::BitAlloc;
+use core::sync::atomic::{AtomicUsize, Ordering};
+use std::{
     os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
     thread::yield_now,
 };
-use bitmap_allocator::BitAlloc;
-use core::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::{
-    HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE,
-    arch::{HCpu, Hal},
-    vhal::cpu::{CpuHardId, CpuId},
-};
+pub mod cpu;
+pub mod percpu;
+pub mod timer;
 
-pub(crate) mod cpu;
-pub(crate) mod precpu;
-mod timer;
+use cpu::{CpuHardId, CpuId};
+
+use crate::{HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE, arch::Hal};
+
+pub trait ArchOp {
+    type HCPU: HCpuOp;
+
+    fn init() -> anyhow::Result<()>;
+    fn cache_flush(vaddr: HostVirtAddr, size: usize);
+    fn cpu_hard_id() -> CpuHardId;
+    fn cpu_list() -> Vec<CpuHardId>;
+    fn current_cpu_init(id: CpuId) -> anyhow::Result<Self::HCPU>;
+}
+
+pub trait HCpuOp {
+    fn hard_id(&self) -> CpuHardId;
+}
 
 pub fn init() -> anyhow::Result<()> {
     Hal::init()?;
 
     static CORES: AtomicUsize = AtomicUsize::new(0);
 
-    let cpu_count = cpu_count();
+    let cpu_count = cpu::count();
 
     info!("Initializing VHal for {cpu_count} CPUs...");
-    cpu::PRE_CPU.init();
+    cpu::PRE_CPU.init_empty();
+    timer::init();
 
     for cpu_id in 0..cpu_count {
         let id = CpuId::new(cpu_id);
@@ -38,11 +51,9 @@ pub fn init() -> anyhow::Result<()> {
                     set_current_affinity(AxCpuMask::one_shot(cpu_id)),
                     "Initialize CPU affinity failed!"
                 );
-                info!("Enabling hardware virtualization support on core {id}");
-                timer::init_percpu();
 
                 let cpu_data = Hal::current_cpu_init(id).expect("Enable virtualization failed!");
-                unsafe { cpu::PRE_CPU.set(cpu_data.hard_id(), cpu_data) };
+                unsafe { cpu::PRE_CPU.set(cpu_data.hard_id, cpu_data) };
                 let _ = CORES.fetch_add(1, Ordering::Release);
             })
             .map_err(|e| anyhow!("{e:?}"))?;
@@ -60,22 +71,6 @@ pub fn init() -> anyhow::Result<()> {
     info!("All cores have enabled hardware virtualization support.");
 
     Ok(())
-}
-
-pub fn cpu_count() -> usize {
-    axruntime::cpu_count()
-}
-
-pub(crate) trait ArchHal {
-    fn init() -> anyhow::Result<()>;
-    fn cache_flush(vaddr: HostVirtAddr, size: usize);
-    fn cpu_hard_id() -> CpuHardId;
-    fn cpu_list() -> Vec<CpuHardId>;
-    fn current_cpu_init(id: CpuId) -> anyhow::Result<HCpu>;
-}
-
-pub(crate) trait ArchCpuData {
-    fn hard_id(&self) -> CpuHardId;
 }
 
 pub fn phys_to_virt(paddr: HostPhysAddr) -> HostVirtAddr {

@@ -11,7 +11,7 @@ pub use axvmconfig::{
     VMInterruptMode, VMType, VmMemConfig, VmMemMappingType,
 };
 
-use crate::vhal::cpu::CpuId;
+use crate::hal::cpu::CpuId;
 
 #[derive(Debug, Default, Clone)]
 pub struct VMImageConfig {
