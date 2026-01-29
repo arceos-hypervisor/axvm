@@ -2,6 +2,7 @@ use core::{
     fmt::{self, Debug, Display},
     ops::Deref,
 };
+use alloc::vec::Vec;
 
 use aarch64_cpu::registers::*;
 use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
@@ -9,12 +10,12 @@ use axvm_types::addr::*;
 
 use crate::{
     RunError,
-    vcpu::{VCpuCommon, VCpuOp},
     data::VmDataWeak,
     hal::{
         HCpuOp,
         cpu::{CpuHardId, CpuId},
     },
+    vcpu::{VCpuCommon, VCpuOp},
 };
 
 pub struct HCpu {
@@ -84,6 +85,13 @@ impl arm_vcpu::CpuHal for VCpuHal {
 
     fn inject_interrupt(&self, irq: usize) {
         todo!()
+    }
+
+    fn cpu_list(&self) -> Vec<usize> {
+        crate::hal::cpu::list()
+            .into_iter()
+            .map(|id| id.raw())
+            .collect()
     }
 }
 
