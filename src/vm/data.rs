@@ -267,7 +267,7 @@ impl Deref for VmData {
 }
 
 #[derive(Clone)]
-pub struct VmDataWeak {
+pub(crate) struct VmDataWeak {
     id: VmId,
     inner: Weak<VmDataInner>,
 }
