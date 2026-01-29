@@ -9,10 +9,10 @@ use axvm_types::addr::*;
 
 use crate::{
     RunError,
-    data::VmDataWeak,
     vcpu::{VCpuCommon, VCpuOp},
-    vhal::{
-        ArchCpuData,
+    data::VmDataWeak,
+    hal::{
+        HCpuOp,
         cpu::{CpuHardId, CpuId},
     },
 };
@@ -24,6 +24,12 @@ pub struct HCpu {
     max_guest_page_table_levels: usize,
     pub pa_range: core::ops::Range<usize>,
     pub pa_bits: usize,
+}
+
+impl HCpuOp for HCpu {
+    fn hard_id(&self) -> CpuHardId {
+        self.hard_id
+    }
 }
 
 impl HCpu {
@@ -53,12 +59,6 @@ impl HCpu {
 
     pub fn max_guest_page_table_levels(&self) -> usize {
         self.max_guest_page_table_levels
-    }
-}
-
-impl ArchCpuData for HCpu {
-    fn hard_id(&self) -> CpuHardId {
-        self.hard_id
     }
 }
 

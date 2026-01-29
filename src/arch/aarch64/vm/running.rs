@@ -2,7 +2,7 @@ use fdt_edit::NodeRef;
 
 use crate::{
     GuestPhysAddr, VmAddrSpace, VmMachineRunningCommon, VmMachineRunningOps, VmMachineStoppingOps,
-    arch::vm::DevMapConfig, vhal::cpu::CpuHardId,
+    arch::vm::DevMapConfig, hal::cpu::CpuHardId,
 };
 
 /// Data needed when VM is running

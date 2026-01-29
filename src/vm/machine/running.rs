@@ -8,8 +8,8 @@ use std::{
 use alloc::vec::Vec;
 
 use crate::{
-    TASK_STACK_SIZE, VmAddrSpace, arch::cpu::VCpu, data::VmDataWeak, vcpu::VCpuOp,
-    vhal::cpu::CpuHardId,
+    TASK_STACK_SIZE, VmAddrSpace, arch::cpu::VCpu, vcpu::VCpuOp, data::VmDataWeak,
+    hal::cpu::CpuHardId,
 };
 
 pub struct VmMachineRunningCommon {

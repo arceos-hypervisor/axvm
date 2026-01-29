@@ -1,15 +1,26 @@
-use core::fmt::Display;
+use alloc::vec::Vec;
 
 use bitmap_allocator::{BitAlloc, BitAlloc4K};
+use derive_more::From;
 use spin::Mutex;
 
+use super::percpu::PerCpuSet;
 use crate::{
     arch::HCpu,
-    vhal::{ArchCpuData, precpu::PreCpuSet},
+    hal::{ArchOp, HCpuOp},
 };
 
-pub(super) static PRE_CPU: PreCpuSet<HCpu> = PreCpuSet::new();
+pub(super) static PRE_CPU: PerCpuSet<HCpu> = PerCpuSet::new();
 pub(super) static HCPU_ALLOC: Mutex<BitAlloc4K> = Mutex::new(BitAlloc4K::DEFAULT);
+static CPU_LIST: spin::Once<Vec<CpuHardId>> = spin::Once::new();
+
+pub fn count() -> usize {
+    list().len()
+}
+
+pub fn list() -> Vec<CpuHardId> {
+    CPU_LIST.call_once(|| crate::arch::Hal::cpu_list()).clone()
+}
 
 #[derive(Debug)]
 pub struct HCpuExclusive(CpuId);
@@ -59,13 +70,26 @@ impl Drop for HCpuExclusive {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    derive_more::Debug,
+    derive_more::Display,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    From,
+)]
+#[debug("CPU Hard({_0:#x})")]
+#[display("CPU Hard({_0:#x})")]
 #[repr(transparent)]
 pub struct CpuHardId(usize);
 
 impl CpuHardId {
-    pub fn new(id: usize) -> Self {
-        CpuHardId(id)
+    pub const fn new(raw: usize) -> Self {
+        Self(raw)
     }
 
     pub fn raw(&self) -> usize {
@@ -73,28 +97,29 @@ impl CpuHardId {
     }
 }
 
-impl Display for CpuHardId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "CPU Hard({:#x})", self.0)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    derive_more::Debug,
+    derive_more::Display,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    From,
+)]
+#[debug("CPU({_0:#x})")]
+#[display("CPU({_0:#x})")]
 #[repr(transparent)]
 pub struct CpuId(usize);
 
 impl CpuId {
-    pub fn new(id: usize) -> Self {
-        CpuId(id)
+    pub const fn new(raw: usize) -> Self {
+        Self(raw)
     }
 
     pub fn raw(&self) -> usize {
         self.0
-    }
-}
-
-impl Display for CpuId {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "CPU({})", self.0)
     }
 }

@@ -3,17 +3,20 @@ use core::{cell::UnsafeCell, ops::Deref};
 
 use crate::{
     arch::Hal,
-    vhal::{ArchHal, cpu::CpuHardId},
+    hal::{
+        ArchOp,
+        cpu::{self, CpuHardId},
+    },
 };
 
-pub(crate) struct PreCpuSet<T>(UnsafeCell<BTreeMap<CpuHardId, Option<T>>>);
+pub(crate) struct PerCpuSet<T>(UnsafeCell<BTreeMap<CpuHardId, Option<T>>>);
 
-unsafe impl<T> Sync for PreCpuSet<T> {}
-unsafe impl<T> Send for PreCpuSet<T> {}
+unsafe impl<T> Sync for PerCpuSet<T> {}
+unsafe impl<T> Send for PerCpuSet<T> {}
 
-impl<T> PreCpuSet<T> {
+impl<T> PerCpuSet<T> {
     pub const fn new() -> Self {
-        PreCpuSet(UnsafeCell::new(BTreeMap::new()))
+        PerCpuSet(UnsafeCell::new(BTreeMap::new()))
     }
 
     pub unsafe fn set(&self, cpu_id: CpuHardId, val: T) {
@@ -21,12 +24,19 @@ impl<T> PreCpuSet<T> {
         pre_cpu_map.insert(cpu_id, Some(val));
     }
 
-    pub fn init(&self) {
-        let cpu_list = Hal::cpu_list();
-        debug!("Initializing PreCpuSet for CPUs: {:?}", cpu_list);
+    pub fn init_empty(&self) {
+        let cpu_list = cpu::list();
         for cpu_id in cpu_list {
             let v = unsafe { &mut *self.0.get() };
             v.insert(cpu_id, None);
+        }
+    }
+
+    pub fn init_with_value(&self, f: impl Fn(CpuHardId) -> T) {
+        let cpu_list = cpu::list();
+        for cpu_id in cpu_list {
+            let v = unsafe { &mut *self.0.get() };
+            v.insert(cpu_id, Some(f(cpu_id)));
         }
     }
 
@@ -35,9 +45,14 @@ impl<T> PreCpuSet<T> {
         set.iter()
             .map(|(k, v)| (*k, v.as_ref().expect("CPU data not initialized!")))
     }
+
+    pub fn cpu_count(&self) -> usize {
+        let set = unsafe { &*self.0.get() };
+        set.len()
+    }
 }
 
-impl<T> Deref for PreCpuSet<T> {
+impl<T> Deref for PerCpuSet<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
