@@ -22,6 +22,7 @@ pub fn list() -> Vec<CpuHardId> {
     CPU_LIST.call_once(|| crate::arch::Hal::cpu_list()).clone()
 }
 
+/// Exclusive access to a hardware CPU
 #[derive(Debug)]
 pub struct HCpuExclusive(CpuId);
 
