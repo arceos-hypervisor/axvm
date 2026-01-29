@@ -62,7 +62,7 @@ impl Clone for RunError {
         match self {
             RunError::Exit => RunError::Exit,
             RunError::ExitWithError(err) => {
-                RunError::ExitWithError(anyhow::anyhow!(format!("{err}")))
+                RunError::ExitWithError(anyhow::anyhow!("{err}"))
             }
         }
     }

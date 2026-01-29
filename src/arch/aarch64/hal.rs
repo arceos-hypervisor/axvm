@@ -22,7 +22,7 @@ impl crate::hal::ArchOp for Hal {
     }
 
     fn cpu_hard_id() -> CpuHardId {
-        let mpidr = MPIDR_EL1.get() as usize;
+        let mpidr = MPIDR_EL1.get() as usize & 0xffffff;
         CpuHardId::new(mpidr)
     }
 
