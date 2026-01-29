@@ -1,33 +1,40 @@
 #![no_std]
 #![feature(new_range_api)]
-// #![feature(concat_idents)]
-// #![feature(naked_functions)]
-// #![feature(const_trait_impl)]
 
 //! This crate provides a minimal VM monitor (VMM) for running guest VMs.
 //!
 //! This crate contains:
 //! - [`AxVM`]: The main structure representing a VM.
 
+#[macro_use]
 extern crate alloc;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate anyhow;
 
-mod hal;
+extern crate axstd as std;
+
+const TASK_STACK_SIZE: usize = 0x40000; // 256 KB
+
+#[cfg_attr(target_arch = "aarch64", path = "arch/aarch64/mod.rs")]
+#[cfg_attr(target_arch = "x86_64", path = "arch/x86_64/mod.rs")]
+pub(crate) mod arch;
+
+mod fdt;
 mod vcpu;
 mod vm;
 
 pub mod config;
+pub(crate) mod hal;
 
-pub use hal::AxVMHal;
-pub use vm::AxVCpuRef;
-pub use vm::AxVM;
-pub use vm::AxVMRef;
+pub use axvm_types::addr::*;
+pub use config::AxVMConfig;
+pub use hal::cpu::{CpuHardId, CpuId};
+pub use vm::*;
 
-/// The architecture-independent per-CPU type.
-pub type AxVMPerCpu<U> = axvcpu::AxPerCpu<vcpu::AxVMArchPerCpuImpl<U>>;
-
-/// Whether the hardware has virtualization support.
-pub fn has_hardware_support() -> bool {
-    vcpu::has_hardware_support()
+/// Enable hardware virtualization support.
+pub fn enable_viretualization() -> anyhow::Result<()> {
+    hal::init()?;
+    Ok(())
 }
