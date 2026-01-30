@@ -45,8 +45,7 @@ impl crate::hal::ArchOp for Hal {
     }
 
     fn new_vcpu(hard_id: CpuHardId, vm: VmWeak) -> anyhow::Result<Self::VCPU> {
-         
-        let vcpu = CPUState::new(hard_id, dtb_addr, vm)?;
+        let vcpu = CPUState::new(hard_id, vm)?;
         Ok(vcpu)
     }
 }
