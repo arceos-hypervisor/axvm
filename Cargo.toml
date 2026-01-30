@@ -2,6 +2,14 @@
 name = "axvm"
 version = "0.1.0"
 edition = "2024"
+authors = ["AxVisor Team"]
+description = "Virtual Machine resource management crate for ArceOS Hypervisor"
+documentation = "https://docs.rs/axvm"
+repository = "https://github.com/arceos-hypervisor/axvm"
+readme = "README.md"
+license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
+keywords = ["hypervisor", "virtualization", "vm", "arceos", "axvisor"]
+categories = ["no-std", "embedded", "virtualization"]
 
 [features]
 default = ["vmx"]
