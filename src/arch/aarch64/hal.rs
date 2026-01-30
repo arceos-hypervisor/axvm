@@ -4,13 +4,15 @@ use aarch64_cpu::registers::*;
 use aarch64_cpu_ext::cache::{CacheOp, dcache_range};
 
 use super::cpu::{HCpu, VCpuHal};
-use crate::fdt;
+use crate::arch::cpu::CPUState;
 use crate::hal::cpu::{CpuHardId, CpuId};
+use crate::{VmWeak, fdt};
 
 pub struct Hal;
 
 impl crate::hal::ArchOp for Hal {
     type HCPU = HCpu;
+    type VCPU = CPUState;
 
     fn init() -> anyhow::Result<()> {
         arm_vcpu::init_hal(&VCpuHal);
@@ -40,5 +42,11 @@ impl crate::hal::ArchOp for Hal {
         cpu.init()?;
         info!("{cpu}");
         Ok(cpu)
+    }
+
+    fn new_vcpu(hard_id: CpuHardId, vm: VmWeak) -> anyhow::Result<Self::VCPU> {
+         
+        let vcpu = CPUState::new(hard_id, dtb_addr, vm)?;
+        Ok(vcpu)
     }
 }

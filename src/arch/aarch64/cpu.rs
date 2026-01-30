@@ -1,8 +1,8 @@
+use alloc::vec::Vec;
 use core::{
     fmt::{self, Debug, Display},
     ops::Deref,
 };
-use alloc::vec::Vec;
 
 use aarch64_cpu::registers::*;
 use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
@@ -15,7 +15,6 @@ use crate::{
         HCpuOp,
         cpu::{CpuHardId, CpuId},
     },
-    vcpu::{VCpuCommon, VCpuOp},
 };
 
 pub struct HCpu {
@@ -95,19 +94,16 @@ impl arm_vcpu::CpuHal for VCpuHal {
     }
 }
 
-pub struct VCpu {
+pub struct CPUState {
     pub vcpu: arm_vcpu::Aarch64VCpu,
-    common: VCpuCommon,
 }
 
-impl VCpu {
+impl CPUState {
     pub fn new(
         host_cpuid: Option<CpuId>,
         dtb_addr: GuestPhysAddr,
         vm: VmDataWeak,
     ) -> anyhow::Result<Self> {
-        let common = VCpuCommon::new_exclusive(host_cpuid, vm)?;
-
         let hard_id = common.hard_id();
 
         let vcpu = arm_vcpu::Aarch64VCpu::new(Aarch64VCpuCreateConfig {
@@ -115,7 +111,7 @@ impl VCpu {
             dtb_addr: dtb_addr.as_usize(),
         })
         .unwrap();
-        Ok(VCpu { vcpu, common })
+        Ok(CPUState { vcpu })
     }
 
     pub fn set_pt_level(&mut self, level: usize) {
@@ -127,7 +123,7 @@ impl VCpu {
     }
 }
 
-impl VCpuOp for VCpu {
+impl VCpuOp for CPUState {
     fn bind_id(&self) -> CpuId {
         self.common.bind_id()
     }
@@ -198,7 +194,7 @@ impl VCpuOp for VCpu {
     }
 }
 
-impl Deref for VCpu {
+impl Deref for CPUState {
     type Target = VCpuCommon;
 
     fn deref(&self) -> &Self::Target {
@@ -206,7 +202,7 @@ impl Deref for VCpu {
     }
 }
 
-impl Debug for VCpu {
+impl Debug for CPUState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("VCpu")
             .field("bind_id", &self.bind_id())

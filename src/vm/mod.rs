@@ -1,57 +1,76 @@
-use crate::{AxVMConfig, data::VmData};
+use std::sync::{Arc, Weak};
 
-mod addrspace;
-pub(crate) mod data;
+use spin::RwLock;
+
+use crate::{
+    AxVMConfig,
+    arch::Hal,
+    define::{VmId, VmInfo, VmState},
+    machine::Machine,
+};
+
 mod define;
-mod machine;
+pub mod machine;
+pub mod vcpu;
 
-pub(crate) use addrspace::*;
 pub use define::*;
-pub use machine::*;
 
 pub struct Vm {
-    data: VmData,
+    info: VmInfo,
+    machine: Arc<RwLock<Machine<Hal>>>,
 }
 
 impl Vm {
-    pub fn new(config: AxVMConfig) -> anyhow::Result<Self> {
-        let data = VmData::new(config)?;
-        data.init()?;
-        Ok(Self { data })
-    }
-
     pub fn id(&self) -> VmId {
-        self.data.id()
+        self.info.id
     }
 
     pub fn name(&self) -> &str {
-        self.data.name()
+        &self.info.name
     }
 
-    pub fn boot(&self) -> anyhow::Result<()> {
-        self.data.start()
+    pub fn new(config: &AxVMConfig) -> anyhow::Result<Self> {
+        let info = VmInfo {
+            id: config.id.into(),
+            name: config.name.clone(),
+        };
+        let machine = Arc::new(RwLock::new(Machine::new(config)?));
+        Ok(Self { info, machine })
     }
 
-    pub fn shutdown(&self) -> anyhow::Result<()> {
-        self.data.stop()
+    pub fn downgrade(&self) -> VmWeak {
+        VmWeak {
+            info: self.info.clone(),
+            machine: Arc::downgrade(&self.machine),
+        }
     }
 
-    #[inline]
-    pub fn status(&self) -> VMStatus {
-        self.data.status()
+    pub fn state(&self) -> anyhow::Result<VmState> {
+        let machine = self.machine.read();
+        Ok(machine.as_ref().into())
+    }
+}
+
+#[derive(Clone)]
+pub struct VmWeak {
+    info: VmInfo,
+    machine: Weak<RwLock<Machine<Hal>>>,
+}
+
+impl VmWeak {
+    pub fn id(&self) -> VmId {
+        self.info.id
     }
 
-    pub fn wait(&self) -> anyhow::Result<()> {
-        self.data.wait()
+    pub fn name(&self) -> &str {
+        &self.info.name
     }
 
-    /// Get total memory size in bytes.
-    pub fn memory_size(&self) -> usize {
-        self.data.memory_size
-    }
-
-    /// Get vCPU count.
-    pub fn vcpu_num(&self) -> usize {
-        self.data.vcpu_num
+    pub fn upgrade(&self) -> Option<Vm> {
+        let machine = self.machine.upgrade()?;
+        Some(Vm {
+            info: self.info.clone(),
+            machine,
+        })
     }
 }
