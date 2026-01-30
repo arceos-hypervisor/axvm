@@ -1,31 +1,33 @@
-use crate::{
-    AxVMConfig,
-    define::VmState,
-    hal::ArchOp,
-    machine::{init::StateInited, running::StateRunning},
-};
+use crate::{AxVMConfig, VmStatus, hal::ArchOp};
 
 mod init;
 mod running;
 
+pub use init::StateInited;
+pub use running::StateRunning;
+
 pub enum Machine<H: ArchOp> {
+    Uninit(AxVMConfig),
     Initialized(StateInited<H>),
     Running(StateRunning<H>),
+    Switch,
     Stopped,
 }
 
 impl<H: ArchOp> Machine<H> {
-    pub fn new(config: &AxVMConfig) -> anyhow::Result<Self> {
-        Ok(Machine::Initialized(StateInited::new(config)?))
+    pub fn new(config: AxVMConfig) -> anyhow::Result<Self> {
+        Ok(Machine::Uninit(config))
     }
 }
 
-impl<H: ArchOp> From<&Machine<H>> for VmState {
+impl<H: ArchOp> From<&Machine<H>> for VmStatus {
     fn from(machine: &Machine<H>) -> Self {
         match machine {
-            Machine::Initialized(_) => VmState::Initialized,
-            Machine::Running(_) => VmState::Running,
-            Machine::Stopped => VmState::Stopped,
+            Machine::Uninit(_) => VmStatus::Uninit,
+            Machine::Initialized(_) => VmStatus::Initialized,
+            Machine::Switch => VmStatus::Busy,
+            Machine::Running(_) => VmStatus::Running,
+            Machine::Stopped => VmStatus::Stopped,
         }
     }
 }

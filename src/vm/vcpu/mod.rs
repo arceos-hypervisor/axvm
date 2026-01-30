@@ -1,5 +1,5 @@
 use crate::{
-    CpuId, VmId, VmWeak,
+    CpuId, RunError, VmId, VmWeak,
     arch::HCpu,
     hal::{
         ArchOp,
@@ -8,8 +8,6 @@ use crate::{
 };
 
 pub trait VCpuOp: core::fmt::Debug + Send + 'static {
-    fn bind_id(&self) -> CpuId;
-    fn hard_id(&self) -> CpuHardId;
     fn run(&mut self) -> Result<(), RunError>;
 }
 
@@ -37,5 +35,9 @@ impl<H: ArchOp> VCpu<H> {
             hcpu_exclusive,
             inner,
         })
+    }
+
+    pub fn bind_id(&self) -> CpuId {
+        self.id
     }
 }

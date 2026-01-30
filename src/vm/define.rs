@@ -1,7 +1,7 @@
 use alloc::string::String;
-use derive_more::From;
+use derive_more::{From, Into};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Into)]
 pub struct VmId(usize);
 
 #[derive(Debug, Clone)]
@@ -11,9 +11,11 @@ pub struct VmInfo {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum VmState {
+pub enum VmStatus {
     #[default]
+    Uninit,
     Initialized,
+    Busy,
     Running,
     Stopped,
 }
