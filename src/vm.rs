@@ -167,6 +167,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let dtb_addr = inner_mut.config.image_config().dtb_load_gpa;
         let vcpu_id_pcpu_sets = inner_mut.config.phys_cpu_ls.get_vcpu_affinities_pcpu_ids();
 
+        info!("dtb_load_gpa: {:?}", dtb_addr);
         debug!("id: {}, VCpuIdPCpuSets: {vcpu_id_pcpu_sets:#x?}", self.id());
 
         let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
@@ -179,7 +180,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             #[cfg(target_arch = "riscv64")]
             let arch_config = AxVCpuCreateConfig {
                 hart_id: vcpu_id as _,
-                dtb_addr: dtb_addr.unwrap_or_default(),
+                dtb_addr: dtb_addr.unwrap_or_default().as_usize(),
             };
             #[cfg(target_arch = "x86_64")]
             let arch_config = AxVCpuCreateConfig::default();
@@ -501,7 +502,11 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 }
                 AxVCpuExitReason::IoRead { port, width } => {
                     let val = self.get_devices().handle_port_read(*port, *width)?;
+                    #[cfg(not(target_arch = "riscv64"))]
                     vcpu.set_gpr(0, val); // The target is always eax/ax/al, todo: handle access_width correctly
+
+                    #[cfg(target_arch = "riscv64")]
+                    vcpu.set_gpr(riscv_vcpu::GprIndex::A0 as usize, val);
 
                     true
                 }
