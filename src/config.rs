@@ -236,7 +236,8 @@ impl PhysCpuList {
                 vcpu_pcpu_tuples[vcpu_id].2 = *phys_id;
                 #[cfg(target_arch = "riscv64")]
                 {
-                    if pcpu_mask_flag == false {    // if don't assign pcpu mask yet, assign it manually
+                    if pcpu_mask_flag == false {
+                        // if don't assign pcpu mask yet, assign it manually
                         vcpu_pcpu_tuples[vcpu_id].1 = Some(1 << (*phys_id));
                     }
                 }
