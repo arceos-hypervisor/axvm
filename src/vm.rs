@@ -43,20 +43,26 @@ struct AxVMInnerConst<U: AxVCpuHal> {
 unsafe impl<U: AxVCpuHal> Send for AxVMInnerConst<U> {}
 unsafe impl<U: AxVCpuHal> Sync for AxVMInnerConst<U> {}
 
+/// Represents a memory region in a virtual machine.
 #[derive(Debug, Clone)]
 pub struct VMMemoryRegion {
+    /// Guest physical address.
     pub gpa: GuestPhysAddr,
+    /// Host virtual address.
     pub hva: HostVirtAddr,
+    /// Memory layout of the region.
     pub layout: Layout,
     /// Whether this region was allocated by the allocator and needs to be deallocated
     pub needs_dealloc: bool,
 }
 
 impl VMMemoryRegion {
+    /// Returns the size of the memory region.
     pub fn size(&self) -> usize {
         self.layout.size()
     }
 
+    /// Returns `true` if the guest physical address is identical to the host virtual address.
     pub fn is_identical(&self) -> bool {
         self.gpa.as_usize() == self.hva.as_usize()
     }
@@ -167,6 +173,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let dtb_addr = inner_mut.config.image_config().dtb_load_gpa;
         let vcpu_id_pcpu_sets = inner_mut.config.phys_cpu_ls.get_vcpu_affinities_pcpu_ids();
 
+        info!("dtb_load_gpa: {:?}", dtb_addr);
         debug!("id: {}, VCpuIdPCpuSets: {vcpu_id_pcpu_sets:#x?}", self.id());
 
         let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
@@ -179,7 +186,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             #[cfg(target_arch = "riscv64")]
             let arch_config = AxVCpuCreateConfig {
                 hart_id: vcpu_id as _,
-                dtb_addr: dtb_addr.unwrap_or_default(),
+                dtb_addr: dtb_addr.unwrap_or_default().as_usize(),
             };
             #[cfg(target_arch = "x86_64")]
             let arch_config = AxVCpuCreateConfig::default();
@@ -336,11 +343,13 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(())
     }
 
+    /// Sets the VM status.
     pub fn set_vm_status(&self, status: VMStatus) {
         let mut inner_mut = self.inner_mut.lock();
         inner_mut.vm_status = status;
     }
 
+    /// Returns the current VM status.
     pub fn vm_status(&self) -> VMStatus {
         let inner_mut = self.inner_mut.lock();
         inner_mut.vm_status
@@ -501,7 +510,11 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 }
                 AxVCpuExitReason::IoRead { port, width } => {
                     let val = self.get_devices().handle_port_read(*port, *width)?;
+                    #[cfg(not(target_arch = "riscv64"))]
                     vcpu.set_gpr(0, val); // The target is always eax/ax/al, todo: handle access_width correctly
+
+                    #[cfg(target_arch = "riscv64")]
+                    vcpu.set_gpr(riscv_vcpu::GprIndex::A0 as usize, val);
 
                     true
                 }
@@ -698,6 +711,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(())
     }
 
+    /// Allocates a new memory region for the VM.
     pub fn alloc_memory_region(
         &self,
         layout: Layout,
@@ -736,10 +750,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(s)
     }
 
+    /// Returns a list of all memory regions in the VM.
     pub fn memory_regions(&self) -> Vec<VMMemoryRegion> {
         self.inner_mut.lock().memory_regions.clone()
     }
 
+    /// Maps a reserved memory region for the VM.
     pub fn map_reserved_memory_region(
         &self,
         layout: Layout,
