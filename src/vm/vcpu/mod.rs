@@ -91,6 +91,7 @@ impl<H: ArchOp> VCpu<H> {
         let thread_ok = Arc::new(AtomicBool::new(false));
         let thread_ok_clone = thread_ok.clone();
         let bind_id = self.bind_id();
+        let hard_id = self.hard_id;
         let handle = std::thread::Builder::new()
             .name(format!("init-cpu-{}", bind_id))
             .stack_size(TASK_STACK_SIZE)
@@ -125,7 +126,7 @@ impl<H: ArchOp> VCpu<H> {
                 self
             })
             .map_err(|e| anyhow!("{e:?}"))?;
-        debug!("Waiting for CPU {} thread", bind_id);
+        debug!("Waiting for CPU {} {} thread", bind_id, hard_id);
         while !thread_ok.load(Ordering::SeqCst) {
             std::thread::yield_now();
         }

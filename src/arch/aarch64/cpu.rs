@@ -140,10 +140,10 @@ impl VCpuOp for CPUState {
             .setup_current_cpu(vm.id().into())
             .map_err(|e| anyhow!("{e}"))?;
         while vm.is_active() {
-            debug!("vCPU {} entering guest", self.mpidr_el1);
+            debug!("vCPU {:#x} entering guest", self.mpidr_el1);
             let exit_reason = self.vcpu.run().map_err(|e| anyhow!("{e}"))?;
             debug!(
-                "vCPU {} exited with reason: {:?}",
+                "vCPU {:#x} exited with reason: {:?}",
                 self.mpidr_el1, exit_reason
             );
             match exit_reason {
@@ -166,13 +166,13 @@ impl VCpuOp for CPUState {
                     entry_point,
                     arg,
                 } => {
-                    debug!("vCPU {} requested CPU {} up", self.mpidr_el1, target_cpu);
+                    debug!("vCPU {:#x} requested CPU {} up", self.mpidr_el1, target_cpu);
                     vm.cpu_up(CpuHardId::new(target_cpu as _), entry_point, arg as _)?;
                     self.vcpu.set_gpr(0, 0);
                 }
                 arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
                 arm_vcpu::AxVCpuExitReason::SystemDown => {
-                    info!("vCPU {} requested system shutdown", self.mpidr_el1);
+                    info!("vCPU {:#x} requested system shutdown", self.mpidr_el1);
                     // self.vm()?.stop()?;
                     vm.set_exit(None);
                 }
