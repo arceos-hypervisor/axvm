@@ -1,5 +1,7 @@
+use axvmconfig::VMInterruptMode;
+
 use crate::{
-    CpuId, RunError, VmId, VmWeak,
+    CpuId, GuestPhysAddr, HostPhysAddr, RunError, VmId, VmWeak,
     arch::HCpu,
     hal::{
         ArchOp,
@@ -7,7 +9,17 @@ use crate::{
     },
 };
 
-pub trait VCpuOp: core::fmt::Debug + Send + 'static {
+pub(crate) struct CpuBootInfo {
+    pub kernel_entry: GuestPhysAddr,
+    pub dtb_addr: GuestPhysAddr,
+    pub gpt_root: HostPhysAddr,
+    pub pt_levels: usize,
+    pub pa_bits: usize,
+    pub irq_mode: VMInterruptMode,
+}
+
+pub(crate) trait VCpuOp: core::fmt::Debug + Send + 'static {
+    fn set_boot_info(&mut self, info: &CpuBootInfo) -> anyhow::Result<()>;
     fn run(&mut self) -> Result<(), RunError>;
 }
 
@@ -45,10 +57,7 @@ impl<H: ArchOp> VCpu<H> {
         self.hcpu_exclusive.cpu()
     }
 
-    // pub fn with_hcpu<F, R>(&self, f: F) -> R
-    // where
-    //     F: FnOnce(&H::HCPU) -> R,
-    // {
-    //     self.hcpu_exclusive.with_cpu(f)
-    // }
+    pub fn set_boot_info(&mut self, info: &CpuBootInfo) -> anyhow::Result<()> {
+        self.inner.set_boot_info(info)
+    }
 }

@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use fdt_edit::{Fdt, FdtData, Node, Property, RegInfo, Status};
 
-use crate::{CpuHardId, GuestMemory, GuestPhysAddr};
+use crate::{CpuHardId, GuestMemory, GuestPhysAddr, hal::ArchOp, vcpu::VCpu};
 
 pub(crate) fn fdt_edit() -> Option<Fdt> {
     let addr = axhal::dtb::get_bootarg();
@@ -44,29 +44,29 @@ impl FdtBuilder {
         Ok(dtb_data)
     }
 
-    // pub fn setup_cpus<'a>(
-    //     &mut self,
-    //     vcpus: impl Iterator<Item = &'a VCpuCommon>,
-    // ) -> anyhow::Result<()> {
-    //     let mut rm_nodes = vec![];
-    //     let vcpu_hard_ls = vcpus.map(|v: &VCpuCommon| v.hard_id()).collect::<Vec<_>>();
-    //     for cpu in self.fdt.find_by_path("/cpus/cpu") {
-    //         if let Some(id) = cpu.regs() {
-    //             let id = CpuHardId::new(id[0].address as usize);
-    //             if vcpu_hard_ls.contains(&id) {
-    //                 continue;
-    //             }
-    //         }
+    pub fn setup_cpus<H: ArchOp>(&mut self, vcpus: &[VCpu<H>]) -> anyhow::Result<()> {
+        let mut rm_nodes = vec![];
+        let vcpu_hard_ls = vcpus
+            .iter()
+            .map(|v: &VCpu<H>| v.hard_id)
+            .collect::<Vec<_>>();
+        for cpu in self.fdt.find_by_path("/cpus/cpu") {
+            if let Some(id) = cpu.regs() {
+                let id = CpuHardId::new(id[0].address as usize);
+                if vcpu_hard_ls.contains(&id) {
+                    continue;
+                }
+            }
 
-    //         rm_nodes.push(cpu.path());
-    //     }
+            rm_nodes.push(cpu.path());
+        }
 
-    //     for path in rm_nodes {
-    //         self.fdt.remove_node(&path).unwrap();
-    //     }
+        for path in rm_nodes {
+            self.fdt.remove_node(&path).unwrap();
+        }
 
-    //     Ok(())
-    // }
+        Ok(())
+    }
 
     pub fn setup_memory<'a>(
         &mut self,
