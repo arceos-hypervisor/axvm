@@ -1,13 +1,25 @@
-use crate::hal::ArchOp;
+use std::{thread::JoinHandle, vec::Vec};
+
+use crate::{VmAddrSpace, VmWeak, hal::ArchOp, vcpu::VCpu};
 
 pub struct StateRunning<H: ArchOp> {
-    _marker: core::marker::PhantomData<H>,
+    vmspace: VmAddrSpace,
+    vm: VmWeak,
+    threads: Vec<JoinHandle<VCpu<H>>>,
 }
 
 impl<H: ArchOp> StateRunning<H> {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(
+        main_cpu: JoinHandle<VCpu<H>>,
+        vmspace: VmAddrSpace,
+        vm: VmWeak,
+    ) -> anyhow::Result<Self> {
+        let vcpus = vec![main_cpu];
+
         Ok(Self {
-            _marker: core::marker::PhantomData,
+            vmspace,
+            vm,
+            threads: vcpus,
         })
     }
 }

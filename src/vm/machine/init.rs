@@ -121,9 +121,9 @@ impl<H: ArchOp> StateInited<H> {
 
         let mut main = self.vcpus.remove(0);
 
-        self.run_cpu(main)?;
+        let main = self.run_cpu(main)?;
 
-        StateRunning::new()
+        StateRunning::new(main, self.vmspace, self.vm)
     }
 
     fn run_cpu(&mut self, mut cpu: VCpu<H>) -> anyhow::Result<JoinHandle<VCpu<H>>> {
