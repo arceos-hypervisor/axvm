@@ -58,7 +58,7 @@ axplat-x86-qemu-q35.workspace = true
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64-cpu = "11.0"
 aarch64-cpu-ext = "0.1"
-arm_vcpu = "0.1"
+arm_vcpu = "0.3"
 # arm_vgic = {version = "0.1", features = ["vgicv3"]}
 
 [patch.crates-io]

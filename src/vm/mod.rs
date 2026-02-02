@@ -7,7 +7,9 @@ use std::sync::{Arc, Weak};
 use spin::RwLock;
 
 use crate::{
-    AxVMConfig, CpuHardId, GuestPhysAddr, arch::Hal, machine::{Machine, StateInited}
+    AxVMConfig, CpuHardId, GuestPhysAddr,
+    arch::Hal,
+    machine::{Machine, StateInited},
 };
 
 mod addrspace;
