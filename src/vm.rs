@@ -43,20 +43,26 @@ struct AxVMInnerConst<U: AxVCpuHal> {
 unsafe impl<U: AxVCpuHal> Send for AxVMInnerConst<U> {}
 unsafe impl<U: AxVCpuHal> Sync for AxVMInnerConst<U> {}
 
+/// Represents a memory region in a virtual machine.
 #[derive(Debug, Clone)]
 pub struct VMMemoryRegion {
+    /// Guest physical address.
     pub gpa: GuestPhysAddr,
+    /// Host virtual address.
     pub hva: HostVirtAddr,
+    /// Memory layout of the region.
     pub layout: Layout,
     /// Whether this region was allocated by the allocator and needs to be deallocated
     pub needs_dealloc: bool,
 }
 
 impl VMMemoryRegion {
+    /// Returns the size of the memory region.
     pub fn size(&self) -> usize {
         self.layout.size()
     }
 
+    /// Returns `true` if the guest physical address is identical to the host virtual address.
     pub fn is_identical(&self) -> bool {
         self.gpa.as_usize() == self.hva.as_usize()
     }
@@ -337,11 +343,13 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(())
     }
 
+    /// Sets the VM status.
     pub fn set_vm_status(&self, status: VMStatus) {
         let mut inner_mut = self.inner_mut.lock();
         inner_mut.vm_status = status;
     }
 
+    /// Returns the current VM status.
     pub fn vm_status(&self) -> VMStatus {
         let inner_mut = self.inner_mut.lock();
         inner_mut.vm_status
@@ -703,6 +711,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(())
     }
 
+    /// Allocates a new memory region for the VM.
     pub fn alloc_memory_region(
         &self,
         layout: Layout,
@@ -741,10 +750,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         Ok(s)
     }
 
+    /// Returns a list of all memory regions in the VM.
     pub fn memory_regions(&self) -> Vec<VMMemoryRegion> {
         self.inner_mut.lock().memory_regions.clone()
     }
 
+    /// Maps a reserved memory region for the VM.
     pub fn map_reserved_memory_region(
         &self,
         layout: Layout,

@@ -51,7 +51,9 @@ pub struct AxVMConfig {
     #[allow(dead_code)]
     vm_type: VMType,
     pub(crate) phys_cpu_ls: PhysCpuList,
+    /// vCPU configuration.
     pub cpu_config: AxVCpuConfig,
+    /// VM image configuration.
     pub image_config: VMImageConfig,
     emu_devices: Vec<EmulatedDeviceConfig>,
     pass_through_devices: Vec<PassThroughDeviceConfig>,
@@ -122,14 +124,17 @@ impl AxVMConfig {
         self.cpu_config.ap_entry
     }
 
+    /// Returns a mutable reference to the physical CPU list.
     pub fn phys_cpu_ls_mut(&mut self) -> &mut PhysCpuList {
         &mut self.phys_cpu_ls
     }
 
+    /// Returns the list of excluded devices.
     pub fn excluded_devices(&self) -> &Vec<Vec<String>> {
         &self.excluded_devices
     }
 
+    /// Returns the list of passthrough address configurations.
     pub fn pass_through_addresses(&self) -> &Vec<PassThroughAddressConfig> {
         &self.pass_through_addresses
     }
@@ -191,6 +196,7 @@ impl AxVMConfig {
     }
 }
 
+/// Represents the list of physical CPUs available for the VM.
 #[derive(Debug, Default, Clone)]
 pub struct PhysCpuList {
     cpu_num: usize,
@@ -246,18 +252,22 @@ impl PhysCpuList {
         vcpu_pcpu_tuples
     }
 
+    /// Returns the number of CPUs.
     pub fn cpu_num(&self) -> usize {
         self.cpu_num
     }
 
+    /// Returns the physical CPU IDs.
     pub fn phys_cpu_ids(&self) -> &Option<Vec<usize>> {
         &self.phys_cpu_ids
     }
 
+    /// Returns the physical CPU sets.
     pub fn phys_cpu_sets(&self) -> &Option<Vec<usize>> {
         &self.phys_cpu_sets
     }
 
+    /// Sets the guest CPU sets.
     pub fn set_guest_cpu_sets(&mut self, phys_cpu_sets: Vec<usize>) {
         self.phys_cpu_sets = Some(phys_cpu_sets);
     }
