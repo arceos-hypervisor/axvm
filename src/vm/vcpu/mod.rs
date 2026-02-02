@@ -1,10 +1,10 @@
 use axvmconfig::VMInterruptMode;
 
 use crate::{
-    CpuId, GuestPhysAddr, HostPhysAddr, RunError, Vm, VmId, VmWeak,
+    CpuId, GuestPhysAddr, HostPhysAddr, RunError, Vm, VmWeak,
     arch::HCpu,
     hal::{
-        ArchOp,
+        ArchOp, HCpuOp,
         cpu::{CpuHardId, HCpuExclusive},
     },
 };
@@ -53,7 +53,7 @@ impl<H: ArchOp> VCpu<H> {
         self.id
     }
 
-    pub fn hcpu(&self) -> &HCpu {
+    pub fn hcpu(&self) -> &impl HCpuOp {
         self.hcpu_exclusive.cpu()
     }
 

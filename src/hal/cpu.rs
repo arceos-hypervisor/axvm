@@ -47,7 +47,7 @@ impl HCpuExclusive {
         }
     }
 
-    pub fn cpu(&self) -> &HCpu {
+    pub fn cpu(&self) -> &impl HCpuOp {
         for (_id, cpu) in PRE_CPU.iter() {
             if cpu.id == self.0 {
                 return cpu;
