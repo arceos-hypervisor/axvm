@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::{AxVMConfig, CpuHardId, GuestPhysAddr, VMStatus, hal::ArchOp};
+use crate::{AxVMConfig, CpuHardId, GuestPhysAddr, RunError, hal::ArchOp};
 
 mod init;
 mod running;
@@ -13,7 +13,11 @@ pub enum Machine<H: ArchOp> {
     Initialized(StateInited<H>),
     Running(StateRunning<H>),
     Switch,
-    Stopped,
+    Stopping {
+        run: Option<StateRunning<H>>,
+        err: Option<RunError>,
+    },
+    Stopped(Option<RunError>),
 }
 
 impl<H: ArchOp> Machine<H> {

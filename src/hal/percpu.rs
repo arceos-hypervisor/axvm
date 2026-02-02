@@ -45,11 +45,6 @@ impl<T> PerCpuSet<T> {
         set.iter()
             .map(|(k, v)| (*k, v.as_ref().expect("CPU data not initialized!")))
     }
-
-    pub fn cpu_count(&self) -> usize {
-        let set = unsafe { &*self.0.get() };
-        set.len()
-    }
 }
 
 impl<T> Deref for PerCpuSet<T> {

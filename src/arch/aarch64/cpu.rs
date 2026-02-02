@@ -1,12 +1,8 @@
 use alloc::vec::Vec;
-use core::{
-    fmt::{self, Debug, Display},
-    ops::Deref,
-};
+use core::fmt::{self, Debug, Display};
 
 use aarch64_cpu::registers::*;
 use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig, Aarch64VCpuSetupConfig};
-use axvm_types::addr::*;
 
 use crate::{
     RunError, Vm, VmWeak,

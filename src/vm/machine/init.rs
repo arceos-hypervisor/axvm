@@ -6,8 +6,6 @@ use std::{
     vec::Vec,
 };
 
-use aarch64_cpu::registers::VTCR_EL2::SH0::Non;
-
 use crate::{
     AxVMConfig, GuestPhysAddr, TASK_STACK_SIZE, VmAddrSpace, VmWeak,
     config::CpuNumType,

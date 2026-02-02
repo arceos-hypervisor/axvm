@@ -82,8 +82,6 @@ impl Vm {
     }
 
     pub fn boot(&self) -> anyhow::Result<()> {
-        let weak = self.downgrade();
-
         let mut machine = self.machine.write();
         let old = core::mem::replace(machine.deref_mut(), Machine::Switch);
 
@@ -107,6 +105,10 @@ impl Vm {
         while self.status() < VMStatus::Stopped {
             std::thread::yield_now();
         }
+        let machine = self.machine.read();
+        if let Machine::Stopped(Some(err)) = machine.deref() {
+            return Err(anyhow!("VM exited with error: {}", err));
+        }
         Ok(())
     }
 
@@ -125,7 +127,29 @@ impl Vm {
     }
 
     pub fn set_exit(&self, err: Option<RunError>) {
-        todo!()
+        let mut machine = self.machine.write();
+        if matches!(
+            machine.deref(),
+            Machine::Stopping { .. } | Machine::Stopped(_)
+        ) {
+            return;
+        }
+
+        let old = core::mem::replace(machine.deref_mut(), Machine::Switch);
+
+        match old {
+            Machine::Running(running) => {
+                *machine = Machine::Stopping {
+                    run: Some(running),
+                    err,
+                };
+            }
+
+            other => {
+                *machine = Machine::Stopping { run: None, err };
+            }
+        }
+        self.stat.status.store(VMStatus::Stopping);
     }
 }
 
