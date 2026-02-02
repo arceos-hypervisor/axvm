@@ -75,6 +75,7 @@ impl<H: ArchOp> StateInited<H> {
                 pa_bits,
                 irq_mode: config.interrupt_mode(),
                 gpt_root,
+                secondary_boot_arg: None,
             })?;
         }
 
@@ -121,53 +122,12 @@ impl<H: ArchOp> StateInited<H> {
 
         let main = self.run_cpu(main)?;
 
-        StateRunning::new(main, self.vmspace, self.vm)
+        StateRunning::new(main, self.vcpus, self.vmspace, self.vm)
     }
 
     fn run_cpu(&mut self, mut cpu: VCpu<H>) -> anyhow::Result<JoinHandle<VCpu<H>>> {
         let vm = self.vm.clone();
-        let thread_ok = Arc::new(AtomicBool::new(false));
-        let thread_ok_clone = thread_ok.clone();
-        let bind_id = cpu.bind_id();
-        let handle = std::thread::Builder::new()
-            .name(format!("init-cpu-{}", bind_id))
-            .stack_size(TASK_STACK_SIZE)
-            .spawn(move || {
-                // Initialize cpu affinity here.
-                assert!(
-                    set_current_affinity(AxCpuMask::one_shot(bind_id.raw())),
-                    "Initialize CPU affinity failed!"
-                );
-                thread_ok_clone.store(true, Ordering::SeqCst);
-
-                info!(
-                    "vCPU {} on {} ready, waiting for running...",
-                    cpu.hard_id, bind_id
-                );
-                vm.wait_for_running();
-                info!("VCpu {} on {} run", cpu.hard_id, bind_id);
-                // debug!("\n{:#x?}", cpu);
-                let res = cpu.run();
-                if let Err(e) = res {
-                    info!("vCPU {} exited with error: {e}", bind_id);
-                    vm.set_exit(Some(e));
-                }
-                let cpu_count = vm.stat.running_vcpu_count.fetch_sub(1, Ordering::SeqCst) - 1;
-                debug!("vCPU {} exited, {} vCPUs remaining", bind_id, cpu_count);
-
-                if cpu_count == 0 {
-                    info!("All vCPUs have exited, VM set stopped.");
-                    vm.set_exit(None);
-                }
-
-                cpu
-            })
-            .map_err(|e| anyhow!("{e:?}"))?;
-        debug!("Waiting for CPU {} thread", bind_id);
-        while !thread_ok.load(Ordering::SeqCst) {
-            std::thread::yield_now();
-        }
-        Ok(handle)
+        cpu.run_in_thread(vm, true)
     }
 }
 
