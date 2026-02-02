@@ -167,12 +167,7 @@ impl VCpuOp for CPUState {
                     arg,
                 } => {
                     debug!("vCPU {} requested CPU {} up", self.mpidr_el1, target_cpu);
-                    vm.machine.write().cpu_up(
-                        CpuHardId::new(target_cpu as _),
-                        entry_point,
-                        arg as _,
-                    )?;
-
+                    vm.cpu_up(CpuHardId::new(target_cpu as _), entry_point, arg as _)?;
                     self.vcpu.set_gpr(0, 0);
                 }
                 arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
