@@ -1,7 +1,15 @@
-use std::vec::Vec;
+use core::sync::atomic::{AtomicBool, Ordering};
+use std::{
+    os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
+    sync::Arc,
+    thread::JoinHandle,
+    vec::Vec,
+};
+
+use aarch64_cpu::registers::VTCR_EL2::SH0::Non;
 
 use crate::{
-    AxVMConfig, GuestPhysAddr, VmAddrSpace, VmWeak,
+    AxVMConfig, GuestPhysAddr, TASK_STACK_SIZE, VmAddrSpace, VmWeak,
     config::CpuNumType,
     fdt::FdtBuilder,
     hal::{ArchOp, HCpuOp},
@@ -15,13 +23,14 @@ pub struct StateInited<H: ArchOp> {
     pt_levels: usize,
     pa_max: usize,
     pa_bits: usize,
+    vm: VmWeak,
 }
 
 impl<H: ArchOp> StateInited<H> {
     pub fn new(config: &AxVMConfig, vm: VmWeak) -> anyhow::Result<Self> {
         info!("Initializing VM {} ({})", config.id, config.name);
         // Get vCPU count
-        let mut vcpus = Self::new_vcpus(config, vm)?;
+        let mut vcpus = Self::new_vcpus(config, vm.clone())?;
         let addrspace_info = calculate_addrspace_info(&vcpus);
         let pt_levels = addrspace_info.pt_levels;
         let pa_max = addrspace_info.pa_max;
@@ -77,6 +86,7 @@ impl<H: ArchOp> StateInited<H> {
             pa_max,
             pa_bits,
             vmspace,
+            vm,
         })
     }
 
@@ -103,8 +113,63 @@ impl<H: ArchOp> StateInited<H> {
         Ok(vcpus)
     }
 
-    pub fn run(self) -> anyhow::Result<StateRunning<H>> {
+    pub fn run(mut self) -> anyhow::Result<StateRunning<H>> {
+        debug!("Starting VM {:?} ({})", self.vm.id(), self.vm.name());
+        if self.vcpus.is_empty() {
+            bail!("No vCPU available to run the VM");
+        }
+
+        let mut main = self.vcpus.remove(0);
+
+        self.run_cpu(main)?;
+
         StateRunning::new()
+    }
+
+    fn run_cpu(&mut self, mut cpu: VCpu<H>) -> anyhow::Result<JoinHandle<VCpu<H>>> {
+        let vm = self.vm.clone();
+        let thread_ok = Arc::new(AtomicBool::new(false));
+        let thread_ok_clone = thread_ok.clone();
+        let bind_id = cpu.bind_id();
+        let handle = std::thread::Builder::new()
+            .name(format!("init-cpu-{}", bind_id))
+            .stack_size(TASK_STACK_SIZE)
+            .spawn(move || {
+                // Initialize cpu affinity here.
+                assert!(
+                    set_current_affinity(AxCpuMask::one_shot(bind_id.raw())),
+                    "Initialize CPU affinity failed!"
+                );
+                thread_ok_clone.store(true, Ordering::SeqCst);
+
+                info!(
+                    "vCPU {} on {} ready, waiting for running...",
+                    cpu.hard_id, bind_id
+                );
+                vm.wait_for_running();
+                info!("VCpu {} on {} run", cpu.hard_id, bind_id);
+                // debug!("\n{:#x?}", cpu);
+                let res = cpu.run();
+                if let Err(e) = res {
+                    info!("vCPU {} exited with error: {e}", bind_id);
+                    vm.set_exit(Some(e));
+                }
+                let cpu_count = vm.stat.running_vcpu_count.fetch_sub(1, Ordering::SeqCst) - 1;
+                debug!("vCPU {} exited, {} vCPUs remaining", bind_id, cpu_count);
+
+                if cpu_count == 0 {
+                    info!("All vCPUs have exited, VM set stopped.");
+                    vm.set_exit(None);
+                }
+
+                cpu
+            })
+            .map_err(|e| anyhow!("{e:?}"))?;
+        debug!("Waiting for CPU {} thread", bind_id);
+        while !thread_ok.load(Ordering::SeqCst) {
+            std::thread::yield_now();
+        }
+        Ok(handle)
     }
 }
 

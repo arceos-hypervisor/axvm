@@ -1,7 +1,7 @@
 use axvmconfig::VMInterruptMode;
 
 use crate::{
-    CpuId, GuestPhysAddr, HostPhysAddr, RunError, VmId, VmWeak,
+    CpuId, GuestPhysAddr, HostPhysAddr, RunError, Vm, VmId, VmWeak,
     arch::HCpu,
     hal::{
         ArchOp,
@@ -20,7 +20,7 @@ pub(crate) struct CpuBootInfo {
 
 pub(crate) trait VCpuOp: core::fmt::Debug + Send + 'static {
     fn set_boot_info(&mut self, info: &CpuBootInfo) -> anyhow::Result<()>;
-    fn run(&mut self) -> Result<(), RunError>;
+    fn run(&mut self, vm: &Vm) -> Result<(), RunError>;
 }
 
 pub struct VCpu<H: ArchOp> {
@@ -59,5 +59,10 @@ impl<H: ArchOp> VCpu<H> {
 
     pub fn set_boot_info(&mut self, info: &CpuBootInfo) -> anyhow::Result<()> {
         self.inner.set_boot_info(info)
+    }
+
+    pub fn run(&mut self) -> Result<(), RunError> {
+        let vm = self.vm.upgrade().ok_or(RunError::Exit)?;
+        self.inner.run(&vm)
     }
 }
