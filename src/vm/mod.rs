@@ -1,4 +1,7 @@
-use core::ops::{Deref, DerefMut};
+use core::{
+    ops::{Deref, DerefMut},
+    sync::atomic::Ordering,
+};
 use std::sync::{Arc, Weak};
 
 use spin::RwLock;
@@ -19,7 +22,8 @@ pub use define::*;
 
 pub struct Vm {
     info: VmInfo,
-    machine: Arc<RwLock<Machine<Hal>>>,
+    pub(crate) machine: Arc<RwLock<Machine<Hal>>>,
+    pub(crate) stat: VmStatistics,
 }
 
 impl Vm {
@@ -37,11 +41,19 @@ impl Vm {
             name: config.name.clone(),
         };
         let machine = Arc::new(RwLock::new(Machine::new(config)?));
-
-        let mut vm = Self { info, machine };
+        let stat = Arc::new(VmStatisticsInner::default());
+        let mut vm = Self {
+            info,
+            machine,
+            stat,
+        };
         vm.init()?;
 
         Ok(vm)
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.status() < VMStatus::Stopping
     }
 
     fn init(&mut self) -> anyhow::Result<()> {
@@ -56,6 +68,7 @@ impl Vm {
 
         let inited = StateInited::new(&config, weak)?;
         *machine = Machine::Initialized(inited);
+        self.stat.status.store(VMStatus::Initialized);
 
         Ok(())
     }
@@ -64,10 +77,13 @@ impl Vm {
         VmWeak {
             info: self.info.clone(),
             machine: Arc::downgrade(&self.machine),
+            stat: self.stat.clone(),
         }
     }
 
     pub fn boot(&self) -> anyhow::Result<()> {
+        let weak = self.downgrade();
+
         let mut machine = self.machine.write();
         let old = core::mem::replace(machine.deref_mut(), Machine::Switch);
 
@@ -77,32 +93,38 @@ impl Vm {
 
         let running = inited.run()?;
         *machine = Machine::Running(running);
+        self.stat.status.store(VMStatus::Running);
 
         Ok(())
     }
 
-    pub fn status(&self) -> VMStatus {
-        let machine = self.machine.read();
-        VMStatus::from(machine.deref())
-    }
-
     pub fn shutdown(&self) -> anyhow::Result<()> {
-        todo!()
+        self.set_exit(None);
+        Ok(())
     }
 
     pub fn wait(&self) -> anyhow::Result<()> {
-        todo!()
+        while self.status() < VMStatus::Stopped {
+            std::thread::yield_now();
+        }
+        Ok(())
     }
 
     pub fn vcpu_num(&self) -> usize {
-        let machine = self.machine.read();
-        // machine.vcpu_num()
-        todo!()
+        self.stat.running_vcpu_count.load(Ordering::Acquire)
     }
 
     pub fn memory_size(&self) -> usize {
         let machine = self.machine.read();
         // machine.memory_size()
+        todo!()
+    }
+
+    pub fn status(&self) -> VMStatus {
+        self.stat.status.load()
+    }
+
+    pub fn set_exit(&self, err: Option<RunError>) {
         todo!()
     }
 }
@@ -111,6 +133,7 @@ impl Vm {
 pub struct VmWeak {
     info: VmInfo,
     machine: Weak<RwLock<Machine<Hal>>>,
+    pub(crate) stat: VmStatistics,
 }
 
 impl VmWeak {
@@ -127,6 +150,27 @@ impl VmWeak {
         Some(Vm {
             info: self.info.clone(),
             machine,
+            stat: self.stat.clone(),
         })
+    }
+
+    pub fn status(&self) -> VMStatus {
+        self.stat.status.load()
+    }
+
+    pub fn wait_for_running(&self) {
+        while self.stat.status.load() < VMStatus::Running {
+            std::thread::yield_now();
+        }
+    }
+
+    pub fn set_exit(&self, err: Option<RunError>) {
+        if let Some(vm) = self.upgrade() {
+            vm.set_exit(err);
+        }
+    }
+
+    pub fn running_cpu_count(&self) -> usize {
+        self.stat.running_vcpu_count.load(Ordering::Acquire)
     }
 }

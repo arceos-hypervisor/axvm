@@ -9,7 +9,7 @@ use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig, Aarch64VCpuSetupConfig};
 use axvm_types::addr::*;
 
 use crate::{
-    RunError, VmWeak,
+    RunError, Vm, VmWeak,
     hal::{
         HCpuOp,
         cpu::{CpuHardId, CpuId},
@@ -108,6 +108,7 @@ impl arm_vcpu::CpuHal for VCpuHal {
 
 pub struct CPUState {
     pub vcpu: arm_vcpu::Aarch64VCpu,
+    mpidr_el1: u64,
 }
 
 impl CPUState {
@@ -117,7 +118,10 @@ impl CPUState {
             dtb_addr: 0,
         })
         .unwrap();
-        Ok(CPUState { vcpu })
+        Ok(CPUState {
+            vcpu,
+            mpidr_el1: id.raw() as u64,
+        })
     }
 
     pub fn set_pt_level(&mut self, level: usize) {
@@ -130,64 +134,62 @@ impl CPUState {
 }
 
 impl VCpuOp for CPUState {
-    fn run(&mut self) -> Result<(), RunError> {
-        // info!("Starting vCPU {}", self.bind_id());
-        todo!();
+    fn run(&mut self, vm: &Vm) -> Result<(), RunError> {
+        info!("Starting vCPU {}", self.mpidr_el1);
 
-        // self.vcpu
-        //     .setup_current_cpu(self.vm_id().into())
-        //     .map_err(|e| anyhow!("{e}"))?;
-        // while self.is_active() {
-        //     debug!("vCPU {} entering guest", self.bind_id());
-        //     let exit_reason = self.vcpu.run().map_err(|e| anyhow!("{e}"))?;
-        //     debug!(
-        //         "vCPU {} exited with reason: {:?}",
-        //         self.bind_id(),
-        //         exit_reason
-        //     );
-        //     match exit_reason {
-        //         arm_vcpu::AxVCpuExitReason::Hypercall { nr, args } => todo!(),
-        //         arm_vcpu::AxVCpuExitReason::MmioRead {
-        //             addr,
-        //             width,
-        //             reg,
-        //             reg_width,
-        //             signed_ext,
-        //         } => todo!(),
-        //         arm_vcpu::AxVCpuExitReason::MmioWrite { addr, width, data } => todo!(),
-        //         arm_vcpu::AxVCpuExitReason::SysRegRead { addr, reg } => todo!(),
-        //         arm_vcpu::AxVCpuExitReason::SysRegWrite { addr, value } => todo!(),
-        //         arm_vcpu::AxVCpuExitReason::ExternalInterrupt => {
-        //             axhal::irq::irq_handler(0);
-        //         }
-        //         arm_vcpu::AxVCpuExitReason::CpuUp {
-        //             target_cpu,
-        //             entry_point,
-        //             arg,
-        //         } => {
-        //             debug!("vCPU {} requested CPU {} up", self.bind_id(), target_cpu);
-        //             self.vm()?.with_machine_running_mut(|running| {
-        //                 debug!("vCPU {} is bringing up CPU {}", self.bind_id(), target_cpu);
-        //                 running.cpu_up(CpuHardId::new(target_cpu as _), entry_point, arg)
-        //             })??;
-        //             self.vcpu.set_gpr(0, 0);
-        //         }
-        //         arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
-        //         arm_vcpu::AxVCpuExitReason::SystemDown => {
-        //             info!("vCPU {} requested system shutdown", self.bind_id());
-        //             self.vm()?.stop()?;
-        //         }
-        //         arm_vcpu::AxVCpuExitReason::Nothing => {}
-        //         arm_vcpu::AxVCpuExitReason::SendIPI {
-        //             target_cpu,
-        //             target_cpu_aux,
-        //             send_to_all,
-        //             send_to_self,
-        //             vector,
-        //         } => todo!(),
-        //         _ => todo!(),
-        //     }
-        // }
+        self.vcpu
+            .setup_current_cpu(vm.id().into())
+            .map_err(|e| anyhow!("{e}"))?;
+        while vm.is_active() {
+            debug!("vCPU {} entering guest", self.mpidr_el1);
+            let exit_reason = self.vcpu.run().map_err(|e| anyhow!("{e}"))?;
+            debug!(
+                "vCPU {} exited with reason: {:?}",
+                self.mpidr_el1, exit_reason
+            );
+            match exit_reason {
+                arm_vcpu::AxVCpuExitReason::Hypercall { nr, args } => todo!(),
+                arm_vcpu::AxVCpuExitReason::MmioRead {
+                    addr,
+                    width,
+                    reg,
+                    reg_width,
+                    signed_ext,
+                } => todo!(),
+                arm_vcpu::AxVCpuExitReason::MmioWrite { addr, width, data } => todo!(),
+                arm_vcpu::AxVCpuExitReason::SysRegRead { addr, reg } => todo!(),
+                arm_vcpu::AxVCpuExitReason::SysRegWrite { addr, value } => todo!(),
+                arm_vcpu::AxVCpuExitReason::ExternalInterrupt => {
+                    axhal::irq::irq_handler(0);
+                }
+                arm_vcpu::AxVCpuExitReason::CpuUp {
+                    target_cpu,
+                    entry_point,
+                    arg,
+                } => {
+                    debug!("vCPU {} requested CPU {} up", self.mpidr_el1, target_cpu);
+                    vm.machine
+                        .write()
+                        .cpu_up(CpuHardId::new(target_cpu as _), entry_point, arg)?;
+                    self.vcpu.set_gpr(0, 0);
+                }
+                arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
+                arm_vcpu::AxVCpuExitReason::SystemDown => {
+                    info!("vCPU {} requested system shutdown", self.mpidr_el1);
+                    // self.vm()?.stop()?;
+                    vm.set_exit(None);
+                }
+                arm_vcpu::AxVCpuExitReason::Nothing => {}
+                arm_vcpu::AxVCpuExitReason::SendIPI {
+                    target_cpu,
+                    target_cpu_aux,
+                    send_to_all,
+                    send_to_self,
+                    vector,
+                } => todo!(),
+                _ => todo!(),
+            }
+        }
 
         Ok(())
     }

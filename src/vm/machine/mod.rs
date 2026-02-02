@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::{AxVMConfig, VMStatus, hal::ArchOp};
+use crate::{AxVMConfig, CpuHardId, GuestPhysAddr, VMStatus, hal::ArchOp};
 
 mod init;
 mod running;
@@ -20,16 +20,13 @@ impl<H: ArchOp> Machine<H> {
     pub fn new(config: AxVMConfig) -> anyhow::Result<Self> {
         Ok(Machine::Uninit(Box::new(config)))
     }
-}
 
-impl<H: ArchOp> From<&Machine<H>> for VMStatus {
-    fn from(machine: &Machine<H>) -> Self {
-        match machine {
-            Machine::Uninit(_) => VMStatus::Uninit,
-            Machine::Initialized(_) => VMStatus::Initialized,
-            Machine::Switch => VMStatus::Busy,
-            Machine::Running(_) => VMStatus::Running,
-            Machine::Stopped => VMStatus::Stopped,
-        }
+    pub fn cpu_up(
+        &mut self,
+        target_cpu: CpuHardId,
+        entry_point: GuestPhysAddr,
+        arg: u64,
+    ) -> anyhow::Result<()> {
+        todo!()
     }
 }

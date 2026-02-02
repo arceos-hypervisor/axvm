@@ -14,7 +14,7 @@ use cpu::{CpuHardId, CpuId};
 
 use crate::{HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE, VmWeak, arch::Hal, vcpu::VCpuOp};
 
-pub trait ArchOp {
+pub trait ArchOp: Send + 'static {
     type HCPU: HCpuOp;
     type VCPU: VCpuOp;
 
