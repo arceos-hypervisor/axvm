@@ -35,7 +35,7 @@ pub(crate) struct FdtBuilder {
 
 impl FdtBuilder {
     pub fn new() -> anyhow::Result<Self> {
-        let fdt = fdt_edit().ok_or_else(|| anyhow::anyhow!("No FDT found"))?;
+        let fdt = fdt_edit().ok_or_else(|| anyhow!("No FDT found"))?;
         Ok(Self { fdt })
     }
 

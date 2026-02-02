@@ -28,6 +28,9 @@ pub trait ArchOp {
 
 pub trait HCpuOp {
     fn hard_id(&self) -> CpuHardId;
+    fn max_guest_page_table_levels(&self) -> usize;
+    fn pa_range(&self) -> core::ops::Range<usize>;
+    fn pa_bits(&self) -> usize;
 }
 
 pub fn init() -> anyhow::Result<()> {

@@ -30,6 +30,18 @@ impl HCpuOp for HCpu {
     fn hard_id(&self) -> CpuHardId {
         self.hard_id
     }
+
+    fn max_guest_page_table_levels(&self) -> usize {
+        self.max_guest_page_table_levels
+    }
+
+    fn pa_range(&self) -> core::ops::Range<usize> {
+        self.pa_range.clone()
+    }
+
+    fn pa_bits(&self) -> usize {
+        self.pa_bits
+    }
 }
 
 impl HCpu {
@@ -102,7 +114,7 @@ impl CPUState {
     pub fn new(id: CpuHardId, vm: VmWeak) -> anyhow::Result<Self> {
         let vcpu = arm_vcpu::Aarch64VCpu::new(Aarch64VCpuCreateConfig {
             mpidr_el1: id.raw() as u64,
-            dtb_addr: todo!(),
+            dtb_addr: 0,
         })
         .unwrap();
         Ok(CPUState { vcpu })

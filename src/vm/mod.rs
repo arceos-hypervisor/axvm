@@ -37,11 +37,16 @@ impl Vm {
             name: config.name.clone(),
         };
         let machine = Arc::new(RwLock::new(Machine::new(config)?));
-        Ok(Self { info, machine })
+
+        let mut vm = Self { info, machine };
+        vm.init()?;
+
+        Ok(vm)
     }
 
-    pub fn init(&mut self) -> anyhow::Result<()> {
+    fn init(&mut self) -> anyhow::Result<()> {
         let weak = self.downgrade();
+
         let mut machine = self.machine.write();
         let old = core::mem::replace(machine.deref_mut(), Machine::Switch);
 
@@ -62,7 +67,7 @@ impl Vm {
         }
     }
 
-    pub fn boot(&mut self) -> anyhow::Result<()> {
+    pub fn boot(&self) -> anyhow::Result<()> {
         let mut machine = self.machine.write();
         let old = core::mem::replace(machine.deref_mut(), Machine::Switch);
 
@@ -76,9 +81,29 @@ impl Vm {
         Ok(())
     }
 
-    pub fn status(&self) -> anyhow::Result<VmStatus> {
+    pub fn status(&self) -> VMStatus {
         let machine = self.machine.read();
-        Ok(VmStatus::from(machine.deref()))
+        VMStatus::from(machine.deref())
+    }
+
+    pub fn shutdown(&self) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    pub fn wait(&self) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    pub fn vcpu_num(&self) -> usize {
+        let machine = self.machine.read();
+        // machine.vcpu_num()
+        todo!()
+    }
+
+    pub fn memory_size(&self) -> usize {
+        let machine = self.machine.read();
+        // machine.memory_size()
+        todo!()
     }
 }
 
