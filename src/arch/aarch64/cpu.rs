@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use axvmconfig::VMInterruptMode;
 use core::fmt::{self, Debug, Display};
 
 use aarch64_cpu::registers::*;
@@ -10,7 +11,7 @@ use crate::{
         HCpuOp,
         cpu::{CpuHardId, CpuId},
     },
-    vcpu::VCpuOp,
+    vcpu::{CpuBootInfo, VCpuOp},
 };
 
 pub struct HCpu {
@@ -105,6 +106,7 @@ impl arm_vcpu::CpuHal for VCpuHal {
 pub struct CPUState {
     pub vcpu: arm_vcpu::Aarch64VCpu,
     mpidr_el1: u64,
+    boot: CpuBootInfo,
 }
 
 impl CPUState {
@@ -117,6 +119,7 @@ impl CPUState {
         Ok(CPUState {
             vcpu,
             mpidr_el1: id.raw() as u64,
+            boot: CpuBootInfo::default(),
         })
     }
 
@@ -164,9 +167,12 @@ impl VCpuOp for CPUState {
                     arg,
                 } => {
                     debug!("vCPU {} requested CPU {} up", self.mpidr_el1, target_cpu);
-                    vm.machine
-                        .write()
-                        .cpu_up(CpuHardId::new(target_cpu as _), entry_point, arg)?;
+                    vm.machine.write().cpu_up(
+                        CpuHardId::new(target_cpu as _),
+                        entry_point,
+                        arg as _,
+                    )?;
+
                     self.vcpu.set_gpr(0, 0);
                 }
                 arm_vcpu::AxVCpuExitReason::CpuDown { _state } => todo!(),
@@ -214,7 +220,16 @@ impl VCpuOp for CPUState {
             .set_ept_root(info.gpt_root.as_usize().into())
             .map_err(|e| anyhow!("Failed to set EPT root for vCPU : {e:?}"))?;
 
+        if let Some(arg) = info.secondary_boot_arg {
+            self.vcpu.set_gpr(0, arg);
+        }
+
+        self.boot = info.clone();
         Ok(())
+    }
+
+    fn get_boot_info(&self) -> crate::vcpu::CpuBootInfo {
+        self.boot.clone()
     }
 }
 
