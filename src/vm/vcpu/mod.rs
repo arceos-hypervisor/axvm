@@ -40,4 +40,15 @@ impl<H: ArchOp> VCpu<H> {
     pub fn bind_id(&self) -> CpuId {
         self.id
     }
+
+    pub fn hcpu(&self) -> &HCpu {
+        self.hcpu_exclusive.cpu()
+    }
+
+    // pub fn with_hcpu<F, R>(&self, f: F) -> R
+    // where
+    //     F: FnOnce(&H::HCPU) -> R,
+    // {
+    //     self.hcpu_exclusive.with_cpu(f)
+    // }
 }

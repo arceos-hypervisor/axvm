@@ -11,12 +11,13 @@ pub struct VmInfo {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum VmStatus {
+pub enum VMStatus {
     #[default]
     Uninit,
     Initialized,
     Busy,
     Running,
+    Stopping,
     Stopped,
 }
 

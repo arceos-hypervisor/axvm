@@ -47,6 +47,15 @@ impl HCpuExclusive {
         }
     }
 
+    pub fn cpu(&self) -> &HCpu {
+        for (_id, cpu) in PRE_CPU.iter() {
+            if cpu.id == self.0 {
+                return cpu;
+            }
+        }
+        panic!("CPU data not found for CPU ID {}", self.0);
+    }
+
     pub fn with_cpu<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&HCpu) -> R,

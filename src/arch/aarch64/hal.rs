@@ -36,7 +36,7 @@ impl crate::hal::ArchOp for Hal {
             .collect()
     }
 
-    fn current_cpu_init(id: crate::hal::cpu::CpuId) -> anyhow::Result<Self::HCPU> {
+    fn current_cpu_init(id: CpuId) -> anyhow::Result<Self::HCPU> {
         info!("Enabling virtualization on cpu {id}");
         let mut cpu = HCpu::new(id);
         cpu.init()?;
