@@ -7,9 +7,7 @@ use std::sync::{Arc, Weak};
 use spin::RwLock;
 
 use crate::{
-    AxVMConfig,
-    arch::Hal,
-    machine::{Machine, StateInited},
+    AxVMConfig, CpuHardId, GuestPhysAddr, arch::Hal, machine::{Machine, StateInited}
 };
 
 mod addrspace;
@@ -150,6 +148,16 @@ impl Vm {
             }
         }
         self.stat.status.store(VMStatus::Stopping);
+    }
+
+    pub(crate) fn cpu_up(
+        &self,
+        target_cpu: CpuHardId,
+        entry_point: GuestPhysAddr,
+        arg: usize,
+    ) -> anyhow::Result<()> {
+        let mut machine = self.machine.write();
+        machine.cpu_up(target_cpu, entry_point, arg)
     }
 }
 
