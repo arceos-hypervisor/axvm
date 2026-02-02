@@ -12,11 +12,11 @@ pub mod timer;
 
 use cpu::{CpuHardId, CpuId};
 
-use crate::{HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE, VmWeak, arch::Hal};
+use crate::{HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE, VmWeak, arch::Hal, vcpu::VCpuOp};
 
 pub trait ArchOp {
     type HCPU: HCpuOp;
-    type VCPU;
+    type VCPU: VCpuOp;
 
     fn init() -> anyhow::Result<()>;
     fn cache_flush(vaddr: HostVirtAddr, size: usize);

@@ -1,11 +1,17 @@
 use std::vec::Vec;
 
 use crate::{
-    AxVMConfig, GuestPhysAddr, VmAddrSpace, VmWeak, config::CpuNumType, fdt::FdtBuilder, hal::{ArchOp, HCpuOp}, machine::running::StateRunning, vcpu::VCpu
+    AxVMConfig, GuestPhysAddr, VmAddrSpace, VmWeak,
+    config::CpuNumType,
+    fdt::FdtBuilder,
+    hal::{ArchOp, HCpuOp},
+    machine::running::StateRunning,
+    vcpu::{CpuBootInfo, VCpu},
 };
 
 pub struct StateInited<H: ArchOp> {
     pub vcpus: Vec<VCpu<H>>,
+    vmspace: VmAddrSpace,
     pt_levels: usize,
     pa_max: usize,
     pa_bits: usize,
@@ -15,7 +21,7 @@ impl<H: ArchOp> StateInited<H> {
     pub fn new(config: &AxVMConfig, vm: VmWeak) -> anyhow::Result<Self> {
         info!("Initializing VM {} ({})", config.id, config.name);
         // Get vCPU count
-        let vcpus = Self::new_vcpus(config, vm)?;
+        let mut vcpus = Self::new_vcpus(config, vm)?;
         let addrspace_info = calculate_addrspace_info(&vcpus);
         let pt_levels = addrspace_info.pt_levels;
         let pa_max = addrspace_info.pa_max;
@@ -42,21 +48,35 @@ impl<H: ArchOp> StateInited<H> {
         vmspace.load_kernel_image(&config)?;
 
         let mut fdt = FdtBuilder::new()?;
-        // fdt.setup_cpus(cpus.iter().map(|c| c.deref()))?;
-        // fdt.setup_memory(vmspace.memories().iter())?;
-        // fdt.setup_chosen(None)?;
+        fdt.setup_cpus(&vcpus)?;
+        fdt.setup_memory(vmspace.memories().iter())?;
+        fdt.setup_chosen(None)?;
 
-        // let dtb_data = fdt.build()?;
+        let dtb_data = fdt.build()?;
 
-        // let dtb_addr = vmspace.load_dtb(&dtb_data)?;
+        let dtb_addr = vmspace.load_dtb(&dtb_data)?;
 
-        // vmspace.map_passthrough_regions()?;
+        vmspace.map_passthrough_regions()?;
+        let kernel_entry = vmspace.kernel_entry();
+        let gpt_root = vmspace.gpt_root();
+
+        for vcpu in &mut vcpus {
+            vcpu.set_boot_info(&CpuBootInfo {
+                kernel_entry,
+                dtb_addr,
+                pt_levels,
+                pa_bits,
+                irq_mode: config.interrupt_mode(),
+                gpt_root,
+            })?;
+        }
 
         Ok(Self {
             vcpus,
             pt_levels,
             pa_max,
             pa_bits,
+            vmspace,
         })
     }
 

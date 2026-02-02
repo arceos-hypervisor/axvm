@@ -5,7 +5,7 @@ use core::{
 };
 
 use aarch64_cpu::registers::*;
-use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig};
+use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig, Aarch64VCpuSetupConfig};
 use axvm_types::addr::*;
 
 use crate::{
@@ -188,6 +188,33 @@ impl VCpuOp for CPUState {
         //         _ => todo!(),
         //     }
         // }
+
+        Ok(())
+    }
+
+    fn set_boot_info(&mut self, info: &crate::vcpu::CpuBootInfo) -> anyhow::Result<()> {
+        self.vcpu
+            .set_entry(info.kernel_entry.as_usize().into())
+            .map_err(|e| anyhow!("Failed to set entry {e}"))?;
+        self.vcpu
+            .set_dtb_addr(info.dtb_addr.as_usize().into())
+            .map_err(|e| anyhow!("Failed to set dtb addr {e}"))?;
+        self.vcpu.pt_level = info.pt_levels;
+        self.vcpu.pa_bits = info.pa_bits;
+
+        let setup_config = Aarch64VCpuSetupConfig {
+            passthrough_interrupt: info.irq_mode == axvmconfig::VMInterruptMode::Passthrough,
+            passthrough_timer: info.irq_mode == axvmconfig::VMInterruptMode::Passthrough,
+        };
+
+        self.vcpu
+            .setup(setup_config)
+            .map_err(|e| anyhow!("Failed to setup vCPU : {e:?}"))?;
+
+        // Set EPT root
+        self.vcpu
+            .set_ept_root(info.gpt_root.as_usize().into())
+            .map_err(|e| anyhow!("Failed to set EPT root for vCPU : {e:?}"))?;
 
         Ok(())
     }
