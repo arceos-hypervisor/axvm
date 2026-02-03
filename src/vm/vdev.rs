@@ -13,7 +13,7 @@ pub struct VDevice {
 }
 
 impl VDevice {
-    pub fn new(id: u32, raw: impl VirtDeviceOp + 'static) -> Self {
+    pub fn new(id: u32, raw: impl VirtDeviceOp) -> Self {
         Self {
             id,
             raw: Arc::new(Mutex::new(Box::new(raw))),
@@ -67,12 +67,19 @@ impl VDeviceList {
         inner.deivces.get(&id).cloned()
     }
 
-    pub fn add_device(&self, plat: &VDevPlat, device: impl VirtDeviceOp + 'static) -> u32 {
+    pub fn add_device<F, D>(&self, builder: F) -> anyhow::Result<()>
+    where
+        D: VirtDeviceOp,
+        F: FnOnce(&VDevPlat) -> anyhow::Result<D>,
+    {
+        let plat = self.new_plat();
         let id = plat.id;
+        let device = builder(&plat)?;
         let mut inner = self.inner.write();
         let vdev = VDevice::new(id, device);
         inner.deivces.insert(id, vdev);
-        id
+
+        Ok(())
     }
 
     pub fn handle_mmio_read(&self, addr: GuestPhysAddr, width: AccessWidth) -> Option<usize> {
