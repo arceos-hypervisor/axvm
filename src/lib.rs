@@ -46,6 +46,11 @@ pub use config::AxVMConfig;
 pub use hal::cpu::{CpuHardId, CpuId};
 pub use vm::*;
 
+pub type AccessWidth = axvm_types::device::AccessWidth;
+pub type GuestPhysAddr = axvm_types::addr::GuestPhysAddr;
+pub type HostPhysAddr = axvm_types::addr::HostPhysAddr;
+pub type HostVirtAddr = axvm_types::addr::HostVirtAddr;
+
 /// Enable hardware virtualization support.
 pub fn enable_viretualization() -> anyhow::Result<()> {
     hal::init()?;

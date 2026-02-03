@@ -21,11 +21,19 @@ impl VDeviceList {
 impl VirtPlatformOp for VDeviceList {
     fn alloc_mmio_region(
         &self,
-        addr: Option<arm_vgic::v3::GuestPhysAddr>,
+        addr: Option<axvdev::GuestPhysAddr>,
         size: usize,
         percpu: bool,
     ) -> Option<MmioRegion> {
-        todo!()
+        self.vmspace
+            .new_mmio(
+                addr.map(|addr| {
+                    let raw: usize = addr.into();
+                    raw.into()
+                }),
+                size,
+            )
+            .ok()
     }
 
     fn alloc_irq(&self, irq: Option<IrqNum>) -> Option<IrqNum> {

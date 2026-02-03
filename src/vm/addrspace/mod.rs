@@ -1,13 +1,19 @@
 use alloc::vec::Vec;
 use axaddrspace::MappingFlags;
+use axvdev::MmioRegion;
 use core::{
     alloc::Layout,
     ops::{Deref, DerefMut, Range},
+    ptr::NonNull,
 };
 use memory_addr::MemoryAddr;
 use std::sync::{Arc, Mutex};
 
 use ranges_ext::RangeInfo;
+
+mod mmio;
+
+pub(crate) use mmio::MmioRegions;
 
 use crate::{
     AxVMConfig, GuestPhysAddr, HostPhysAddr, HostVirtAddr,
@@ -31,6 +37,7 @@ struct Inner {
     kernel_entry: GuestPhysAddr,
     kernel_memory_index: usize,
     memories: Vec<GuestMemory>,
+    mmio: MmioRegions,
 }
 
 impl VmAddrSpace {
@@ -56,12 +63,18 @@ impl VmAddrSpace {
             kernel_entry: GuestPhysAddr::from_usize(0),
             kernel_memory_index: 0,
             memories: vec![],
+            mmio: MmioRegions::new(),
         }))))
     }
 
     pub fn gpt_root(&self) -> HostPhysAddr {
         let g = self.0.lock();
         g.aspace.lock().page_table_root().as_usize().into()
+    }
+
+    pub fn mmio_map(&self) -> MmioRegions {
+        let g = self.0.lock();
+        g.mmio.clone()
     }
 
     pub fn kernel_entry(&self) -> GuestPhysAddr {
@@ -217,6 +230,12 @@ impl VmAddrSpace {
             .iter()
             .filter(|m| m.kind == VmRegionKind::Passthrough)
         {
+            debug!(
+                "mapping passthrough region: [{:#x}, {:#x})",
+                region.gpa,
+                region.gpa + region.size
+            );
+
             g.aspace
                 .lock()
                 .map_linear(
@@ -239,6 +258,36 @@ impl VmAddrSpace {
         }
 
         Ok(())
+    }
+
+    pub fn new_mmio(&self, gpa: Option<GuestPhysAddr>, size: usize) -> anyhow::Result<MmioRegion> {
+        let mut g = self.0.lock();
+        let array = Array::new(size, 0x1000);
+
+        let hva = HostVirtAddr::from(array.as_mut_ptr() as usize);
+        let gpa = gpa.unwrap();
+
+        let hpa = virt_to_phys(hva);
+        let aspace = g.aspace.clone();
+
+        g.region_map.add(VmRegion {
+            gpa,
+            size,
+            kind: VmRegionKind::Mmio,
+        });
+
+        g.mmio.add_region(GuestMemory {
+            gpa,
+            hva,
+            layout: Layout::from_size_align(size, 0x1000).unwrap(),
+            _payload: Some(array),
+            aspace,
+        });
+        Ok(MmioRegion {
+            addr: gpa.as_usize().into(),
+            access: NonNull::new(hva.as_usize() as *mut u8).unwrap(),
+            size,
+        })
     }
 }
 
@@ -269,6 +318,7 @@ pub struct VmRegion {
 pub enum VmRegionKind {
     Passthrough,
     Memory,
+    Mmio,
 }
 
 impl RangeInfo for VmRegion {

@@ -1,9 +1,10 @@
 use std::{collections::btree_map::BTreeMap, thread::JoinHandle, vec::Vec};
 
 use crate::{
-    CpuHardId, VmAddrSpace, VmWeak,
+    CpuHardId, MmioRegions, VmAddrSpace, VmWeak,
     hal::HalOp,
     vcpu::{VCpu, VCpuList},
+    vdev::VDeviceList,
 };
 
 pub struct StateRunning<H: HalOp> {
@@ -11,6 +12,8 @@ pub struct StateRunning<H: HalOp> {
     pub(crate) vm: VmWeak,
     pub(crate) vcpus: VCpuList<H>,
     plat: H::PlatData,
+    vdevs: VDeviceList,
+    pub(crate) mmio_map: MmioRegions,
 }
 
 impl<H: HalOp> StateRunning<H> {
@@ -20,14 +23,17 @@ impl<H: HalOp> StateRunning<H> {
         vmspace: VmAddrSpace,
         vm: VmWeak,
         plat: H::PlatData,
+        vdevs: VDeviceList,
     ) -> anyhow::Result<Self> {
         let vcpus = VCpuList::new(cpus, main_cpu, vm.clone());
-
+        let mmio_map = vmspace.mmio_map();
         Ok(Self {
             vmspace,
             vm,
             vcpus,
             plat,
+            vdevs,
+            mmio_map,
         })
     }
 }

@@ -8,7 +8,7 @@ use std::{
 use axvmconfig::VMInterruptMode;
 
 use crate::{
-    CpuId, GuestPhysAddr, HostPhysAddr, RunError, TASK_STACK_SIZE, Vm, VmWeak,
+    AccessWidth, CpuId, GuestPhysAddr, HostPhysAddr, RunError, TASK_STACK_SIZE, Vm, VmWeak,
     arch::{HCpu, Hal},
     hal::{
         HCpuOp, HalOp,

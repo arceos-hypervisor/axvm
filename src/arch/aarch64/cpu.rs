@@ -155,8 +155,27 @@ impl VCpuOp for CPUState {
                     reg,
                     reg_width,
                     signed_ext,
-                } => todo!(),
-                arm_vcpu::AxVCpuExitReason::MmioWrite { addr, width, data } => todo!(),
+                } => {
+                    debug!("vCPU {:#x} MMIO read at addr {:#x}", self.mpidr_el1, addr);
+
+                    let val = vm.handle_mmio_read(addr, width);
+
+                    if let Some(val) = val {
+                        debug!(
+                            "vCPU {:#x} MMIO read returned value {:#x}",
+                            self.mpidr_el1, val
+                        );
+
+                        self.vcpu.set_gpr(reg, val);
+                    } else {
+                        return Err(RunError::ExitWithError(anyhow!(
+                            "MMIO read @{addr:#x} no device"
+                        )));
+                    }
+                }
+                arm_vcpu::AxVCpuExitReason::MmioWrite { addr, width, data } => {
+                    debug!("vCPU {:#x} MMIO write at addr {:#x}", self.mpidr_el1, addr);
+                }
                 arm_vcpu::AxVCpuExitReason::SysRegRead { addr, reg } => {
                     todo!()
                 }
