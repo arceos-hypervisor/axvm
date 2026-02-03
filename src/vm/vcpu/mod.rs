@@ -11,7 +11,7 @@ use crate::{
     CpuId, GuestPhysAddr, HostPhysAddr, RunError, TASK_STACK_SIZE, Vm, VmWeak,
     arch::HCpu,
     hal::{
-        ArchOp, HCpuOp,
+        HCpuOp, HalOp,
         cpu::{CpuHardId, HCpuExclusive},
     },
 };
@@ -37,7 +37,7 @@ pub(crate) trait VCpuOp: core::fmt::Debug + Send + 'static {
     fn run(&mut self, vm: &Vm) -> Result<(), RunError>;
 }
 
-pub struct VCpu<H: ArchOp> {
+pub struct VCpu<H: HalOp> {
     pub id: CpuId,
     pub hard_id: CpuHardId,
     pub vm: VmWeak,
@@ -46,14 +46,14 @@ pub struct VCpu<H: ArchOp> {
     is_primary: bool,
 }
 
-impl<H: ArchOp> VCpu<H> {
-    pub fn new(bind_id: Option<CpuId>, vm: VmWeak) -> anyhow::Result<Self> {
+impl<H: HalOp> VCpu<H> {
+    pub fn new(bind_id: Option<CpuId>, vm: VmWeak, plat: &mut H::PlatData) -> anyhow::Result<Self> {
         let hcpu_exclusive = HCpuExclusive::try_new(bind_id)
             .ok_or_else(|| anyhow!("Failed to allocate hardware CPU for bind id {bind_id:?}"))?;
         let hard_id = hcpu_exclusive.hard_id();
         let id = hcpu_exclusive.id();
 
-        let inner = H::new_vcpu(hard_id.clone(), vm.clone())?;
+        let inner = H::new_vcpu(hard_id.clone(), vm.clone(), plat)?;
 
         Ok(Self {
             id,

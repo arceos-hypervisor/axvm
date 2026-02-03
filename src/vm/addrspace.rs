@@ -12,7 +12,7 @@ use ranges_ext::RangeInfo;
 use crate::{
     AxVMConfig, GuestPhysAddr, HostPhysAddr, HostVirtAddr,
     config::MemoryKind,
-    hal::{ArchOp, phys_to_virt, virt_to_phys},
+    hal::{HalOp, phys_to_virt, virt_to_phys},
 };
 
 const ALIGN: usize = 1024 * 1024 * 2;

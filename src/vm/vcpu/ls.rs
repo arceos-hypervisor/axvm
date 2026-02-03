@@ -6,19 +6,19 @@ use spin::Mutex;
 
 use crate::{
     CpuHardId, GuestPhysAddr, VmWeak,
-    hal::ArchOp,
+    hal::HalOp,
     vcpu::{CpuBootInfo, VCpu},
 };
 
-pub struct VCpuList<H: ArchOp>(Arc<Mutex<Inner<H>>>);
+pub struct VCpuList<H: HalOp>(Arc<Mutex<Inner<H>>>);
 
-struct Inner<H: ArchOp> {
+struct Inner<H: HalOp> {
     vcpus: BTreeMap<CpuHardId, VCpu<H>>,
     threads: Vec<JoinHandle<VCpu<H>>>,
     vm: VmWeak,
 }
 
-impl<H: ArchOp> VCpuList<H> {
+impl<H: HalOp> VCpuList<H> {
     pub fn new(vcpus: Vec<VCpu<H>>, main_thread: JoinHandle<VCpu<H>>, vm: VmWeak) -> Self {
         let mut vcpu_map = BTreeMap::new();
         for vcpu in vcpus {

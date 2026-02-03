@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::{AxVMConfig, CpuHardId, GuestPhysAddr, RunError, hal::ArchOp, vcpu::CpuBootInfo};
+use crate::{AxVMConfig, CpuHardId, GuestPhysAddr, RunError, hal::HalOp, vcpu::CpuBootInfo};
 
 mod init;
 mod running;
@@ -8,7 +8,7 @@ mod running;
 pub use init::StateInited;
 pub use running::StateRunning;
 
-pub enum Machine<H: ArchOp> {
+pub enum Machine<H: HalOp> {
     Uninit(Box<AxVMConfig>),
     Initialized(StateInited<H>),
     Running(StateRunning<H>),
@@ -20,7 +20,7 @@ pub enum Machine<H: ArchOp> {
     Stopped(Option<RunError>),
 }
 
-impl<H: ArchOp> Machine<H> {
+impl<H: HalOp> Machine<H> {
     pub fn new(config: AxVMConfig) -> anyhow::Result<Self> {
         Ok(Machine::Uninit(Box::new(config)))
     }

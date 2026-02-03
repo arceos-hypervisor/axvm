@@ -4,7 +4,7 @@ use core::{cell::UnsafeCell, ops::Deref};
 use crate::{
     arch::Hal,
     hal::{
-        ArchOp,
+        HalOp,
         cpu::{self, CpuHardId},
     },
 };

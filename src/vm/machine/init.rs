@@ -8,27 +8,31 @@ use std::{
 
 use crate::{
     AxVMConfig, GuestPhysAddr, TASK_STACK_SIZE, VmAddrSpace, VmWeak,
+    arch::PlatData,
     config::CpuNumType,
     fdt::FdtBuilder,
-    hal::{ArchOp, HCpuOp},
+    hal::{HCpuOp, HalOp},
     machine::running::StateRunning,
     vcpu::{CpuBootInfo, VCpu},
 };
 
-pub struct StateInited<H: ArchOp> {
+pub struct StateInited<H: HalOp> {
     pub vcpus: Vec<VCpu<H>>,
     vmspace: VmAddrSpace,
     pt_levels: usize,
     pa_max: usize,
     pa_bits: usize,
     vm: VmWeak,
+    plat: H::PlatData,
 }
 
-impl<H: ArchOp> StateInited<H> {
+impl<H: HalOp> StateInited<H> {
     pub fn new(config: &AxVMConfig, vm: VmWeak) -> anyhow::Result<Self> {
         info!("Initializing VM {} ({})", config.id, config.name);
+        let mut plat = H::new_plat_data()?;
+
         // Get vCPU count
-        let mut vcpus = Self::new_vcpus(config, vm.clone())?;
+        let mut vcpus = Self::new_vcpus(config, vm.clone(), &mut plat)?;
         let addrspace_info = calculate_addrspace_info(&vcpus);
         let pt_levels = addrspace_info.pt_levels;
         let pa_max = addrspace_info.pa_max;
@@ -86,22 +90,27 @@ impl<H: ArchOp> StateInited<H> {
             pa_bits,
             vmspace,
             vm,
+            plat,
         })
     }
 
-    fn new_vcpus(config: &AxVMConfig, vm: VmWeak) -> anyhow::Result<Vec<VCpu<H>>> {
+    fn new_vcpus(
+        config: &AxVMConfig,
+        vm: VmWeak,
+        plat: &mut H::PlatData,
+    ) -> anyhow::Result<Vec<VCpu<H>>> {
         let mut vcpus = vec![];
         match config.cpu_num {
             CpuNumType::Alloc(num) => {
                 for _ in 0..num {
-                    let vcpu = VCpu::new(None, vm.clone())?;
+                    let vcpu = VCpu::new(None, vm.clone(), plat)?;
                     debug!("Created vCPU with {:?}", vcpu.bind_id());
                     vcpus.push(vcpu);
                 }
             }
             CpuNumType::Fixed(ref ids) => {
                 for id in ids {
-                    let vcpu = VCpu::new(Some(*id), vm.clone())?;
+                    let vcpu = VCpu::new(Some(*id), vm.clone(), plat)?;
                     debug!("Created vCPU with {:?}", vcpu.bind_id());
                     vcpus.push(vcpu);
                 }
@@ -122,7 +131,7 @@ impl<H: ArchOp> StateInited<H> {
 
         let main = self.run_cpu(main)?;
 
-        StateRunning::new(main, self.vcpus, self.vmspace, self.vm)
+        StateRunning::new(main, self.vcpus, self.vmspace, self.vm, self.plat)
     }
 
     fn run_cpu(&mut self, mut cpu: VCpu<H>) -> anyhow::Result<JoinHandle<VCpu<H>>> {
@@ -138,7 +147,7 @@ struct AddrspaceInfo {
     pa_bits: usize,
 }
 
-fn calculate_addrspace_info<H: ArchOp>(vcpus: &[VCpu<H>]) -> AddrspaceInfo {
+fn calculate_addrspace_info<H: HalOp>(vcpus: &[VCpu<H>]) -> AddrspaceInfo {
     let mut info = AddrspaceInfo {
         pt_levels: 4,
         pa_max: usize::MAX,

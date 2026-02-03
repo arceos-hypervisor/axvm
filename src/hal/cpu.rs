@@ -7,7 +7,7 @@ use spin::Mutex;
 use super::percpu::PerCpuSet;
 use crate::{
     arch::HCpu,
-    hal::{ArchOp, HCpuOp},
+    hal::{HalOp, HCpuOp},
 };
 
 pub(super) static PRE_CPU: PerCpuSet<HCpu> = PerCpuSet::new();

@@ -14,16 +14,22 @@ use cpu::{CpuHardId, CpuId};
 
 use crate::{HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE, VmWeak, arch::Hal, vcpu::VCpuOp};
 
-pub trait ArchOp: Send + 'static {
+pub trait HalOp: Send + 'static {
     type HCPU: HCpuOp;
     type VCPU: VCpuOp;
+    type PlatData: Send + 'static;
 
     fn init() -> anyhow::Result<()>;
     fn cache_flush(vaddr: HostVirtAddr, size: usize);
     fn cpu_hard_id() -> CpuHardId;
     fn cpu_list() -> Vec<CpuHardId>;
     fn current_cpu_init(id: CpuId) -> anyhow::Result<Self::HCPU>;
-    fn new_vcpu(hard_id: CpuHardId, vm: VmWeak) -> anyhow::Result<Self::VCPU>;
+    fn new_plat_data() -> anyhow::Result<Self::PlatData>;
+    fn new_vcpu(
+        hard_id: CpuHardId,
+        vm: VmWeak,
+        plat: &mut Self::PlatData,
+    ) -> anyhow::Result<Self::VCPU>;
 }
 
 pub trait HCpuOp {
