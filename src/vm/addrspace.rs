@@ -18,13 +18,16 @@ use crate::{
 const ALIGN: usize = 1024 * 1024 * 2;
 
 type AddrSpaceRaw = axaddrspace::AddrSpace<axhal::paging::PagingHandlerImpl>;
-type AddrSpaceSync = Arc<Mutex<AddrSpaceRaw>>;
+type AddrSpaceShared = Arc<Mutex<AddrSpaceRaw>>;
 
 pub(crate) type VmRegionMap = ranges_ext::RangeSetAlloc<VmRegion>;
 
-pub struct VmAddrSpace {
-    pub aspace: AddrSpaceSync,
-    pub region_map: VmRegionMap,
+#[derive(Clone)]
+pub struct VmAddrSpace(Arc<Mutex<Inner>>);
+
+struct Inner {
+    aspace: AddrSpaceShared,
+    region_map: VmRegionMap,
     kernel_entry: GuestPhysAddr,
     kernel_memory_index: usize,
     memories: Vec<GuestMemory>,
@@ -47,25 +50,26 @@ impl VmAddrSpace {
         )
         .map_err(|e| anyhow!("Failed to create address space: {e:?}"))?;
 
-        Ok(Self {
+        Ok(Self(Arc::new(Mutex::new(Inner {
             aspace: Arc::new(Mutex::new(address_space)),
             region_map,
             kernel_entry: GuestPhysAddr::from_usize(0),
             kernel_memory_index: 0,
             memories: vec![],
-        })
+        }))))
     }
 
     pub fn gpt_root(&self) -> HostPhysAddr {
-        let g = self.aspace.lock();
-        g.page_table_root().as_usize().into()
+        let g = self.0.lock();
+        g.aspace.lock().page_table_root().as_usize().into()
     }
 
     pub fn kernel_entry(&self) -> GuestPhysAddr {
-        self.kernel_entry
+        self.0.lock().kernel_entry
     }
 
-    pub fn new_memory(&mut self, kind: &MemoryKind) -> anyhow::Result<()> {
+    pub fn new_memory(&self, kind: &MemoryKind) -> anyhow::Result<()> {
+        let mut g = self.0.lock();
         let _gpa;
         let _size;
         let _align = 0x1000;
@@ -82,48 +86,51 @@ impl VmAddrSpace {
                 _gpa = GuestPhysAddr::from_usize(virt_to_phys(hva).as_usize());
                 _size = *size;
                 _payload = Some(array);
-                let mut g = self.aspace.lock();
-                g.map_linear(
-                    _gpa.as_usize().into(),
-                    hva.as_usize().into(),
-                    _size.align_up_4k(),
-                    flags,
-                )
-                .unwrap();
+                g.aspace
+                    .lock()
+                    .map_linear(
+                        _gpa.as_usize().into(),
+                        hva.as_usize().into(),
+                        _size.align_up_4k(),
+                        flags,
+                    )
+                    .unwrap();
             }
             MemoryKind::Reserved { hpa, size } => {
                 hva = phys_to_virt(*hpa);
                 _gpa = GuestPhysAddr::from_usize(hva.as_usize());
                 _size = *size;
                 _payload = None;
-                let mut g = self.aspace.lock();
-                g.map_linear(
-                    _gpa.as_usize().into(),
-                    hva.as_usize().into(),
-                    _size.align_up_4k(),
-                    flags,
-                )
-                .unwrap();
+                g.aspace
+                    .lock()
+                    .map_linear(
+                        _gpa.as_usize().into(),
+                        hva.as_usize().into(),
+                        _size.align_up_4k(),
+                        flags,
+                    )
+                    .unwrap();
             }
             MemoryKind::Vmem { gpa, size } => {
                 _gpa = *gpa;
                 _size = *size;
                 _payload = None;
-                let mut g = self.aspace.lock();
-                g.map_alloc(_gpa.as_usize().into(), _size.align_up_4k(), flags, true)
+                g.aspace
+                    .lock()
+                    .map_alloc(_gpa.as_usize().into(), _size.align_up_4k(), flags, true)
                     .unwrap();
             }
         }
-
-        self.memories.push(GuestMemory {
+        let aspace = g.aspace.clone();
+        g.memories.push(GuestMemory {
             gpa: _gpa,
             hva,
             layout: Layout::from_size_align(_size, _align).unwrap(),
             _payload,
-            aspace: self.aspace.clone(),
+            aspace,
         });
 
-        self.region_map.add(VmRegion {
+        g.region_map.add(VmRegion {
             gpa: _gpa,
             size: _size,
             kind: VmRegionKind::Memory,
@@ -132,12 +139,14 @@ impl VmAddrSpace {
         Ok(())
     }
 
-    pub fn load_kernel_image(&mut self, config: &AxVMConfig) -> anyhow::Result<()> {
+    pub fn load_kernel_image(&self, config: &AxVMConfig) -> anyhow::Result<()> {
+        let mut g = self.0.lock();
+
         let mut idx = 0;
         let image_cfg = config.image_config();
         let gpa = if let Some(gpa) = image_cfg.kernel.gpa {
             let mut found = false;
-            for (i, region) in self.memories.iter().enumerate() {
+            for (i, region) in g.memories.iter().enumerate() {
                 if (region.gpa..region.gpa + region.size()).contains(&gpa) {
                     idx = i;
                     found = true;
@@ -153,7 +162,7 @@ impl VmAddrSpace {
             gpa
         } else {
             let mut gpa = None;
-            for (i, region) in self.memories.iter().enumerate() {
+            for (i, region) in g.memories.iter().enumerate() {
                 if region.size() >= image_cfg.kernel.data.len() {
                     gpa = Some(region.gpa + 2 * 1024 * 1024);
                     idx = i;
@@ -171,58 +180,69 @@ impl VmAddrSpace {
             config.id(),
             config.name()
         );
-        let offset = gpa.as_usize() - self.memories[idx].gpa().as_usize();
-        self.memories[idx].copy_from_slice(offset, &image_cfg.kernel.data);
-        self.kernel_memory_index = idx;
-        self.kernel_entry = gpa;
+        let offset = gpa.as_usize() - g.memories[idx].gpa().as_usize();
+
+        g.memories[idx].copy_from_slice(offset, &image_cfg.kernel.data);
+        g.kernel_memory_index = idx;
+        g.kernel_entry = gpa;
         Ok(())
     }
 
-    pub fn memories(&self) -> &[GuestMemory] {
-        &self.memories
+    pub fn with_memories<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&[GuestMemory]) -> R,
+    {
+        let g = self.0.lock();
+        f(&g.memories)
     }
 
-    pub fn load_dtb(&mut self, data: &[u8]) -> anyhow::Result<GuestPhysAddr> {
-        let guest_mem = self.memories().iter().next().unwrap();
+    pub fn load_dtb(&self, data: &[u8]) -> anyhow::Result<GuestPhysAddr> {
+        let mut g = self.0.lock();
+        let guest_mem = g.memories.iter().next().unwrap();
         let mut dtb_start =
             (guest_mem.gpa().as_usize() + guest_mem.size().min(512 * 1024 * 1024)) - data.len();
         dtb_start = dtb_start.align_down_4k();
 
         let gpa = GuestPhysAddr::from(dtb_start);
         debug!("Loading generated DTB into GPA @{:#x}", dtb_start,);
-        self.copy_to_guest(gpa, &data);
+        g.copy_to_guest(gpa, &data);
         Ok(gpa)
     }
 
     pub fn map_passthrough_regions(&self) -> anyhow::Result<()> {
-        let mut g = self.aspace.lock();
-        for region in self
+        let mut g = self.0.lock();
+
+        for region in g
             .region_map
             .iter()
             .filter(|m| m.kind == VmRegionKind::Passthrough)
         {
-            g.map_linear(
-                region.gpa.as_usize().into(),
-                region.gpa.as_usize().into(),
-                region.size.align_up_4k(),
-                MappingFlags::READ
-                    | MappingFlags::WRITE
-                    | MappingFlags::EXECUTE
-                    | MappingFlags::DEVICE
-                    | MappingFlags::USER,
-            )
-            .map_err(|e| {
-                anyhow!(
-                    "Failed to map passthrough region: [{:?}, {:?})\n {e:?}",
-                    region.gpa,
-                    region.gpa + region.size
+            g.aspace
+                .lock()
+                .map_linear(
+                    region.gpa.as_usize().into(),
+                    region.gpa.as_usize().into(),
+                    region.size.align_up_4k(),
+                    MappingFlags::READ
+                        | MappingFlags::WRITE
+                        | MappingFlags::EXECUTE
+                        | MappingFlags::DEVICE
+                        | MappingFlags::USER,
                 )
-            })?;
+                .map_err(|e| {
+                    anyhow!(
+                        "Failed to map passthrough region: [{:?}, {:?})\n {e:?}",
+                        region.gpa,
+                        region.gpa + region.size
+                    )
+                })?;
         }
 
         Ok(())
     }
+}
 
+impl Inner {
     fn copy_to_guest(&mut self, gpa: GuestPhysAddr, data: &[u8]) {
         let parts = self
             .aspace
@@ -323,7 +343,7 @@ pub struct GuestMemory {
     gpa: GuestPhysAddr,
     hva: HostVirtAddr,
     layout: Layout,
-    aspace: AddrSpaceSync,
+    aspace: AddrSpaceShared,
     _payload: Option<Array>,
 }
 
@@ -383,7 +403,6 @@ impl Drop for GuestMemory {
         let start = self.gpa.as_usize().align_down(self.layout.align());
         let size = self.size().align_up(self.layout.align());
 
-        let mut g = self.aspace.lock();
-        g.unmap(start.into(), size).unwrap();
+        self.aspace.lock().unmap(start.into(), size).unwrap();
     }
 }

@@ -62,9 +62,11 @@ impl<H: HalOp> StateInited<H> {
         }
         vmspace.load_kernel_image(&config)?;
 
+        debug!("Setup FDT for VM {} ({})", config.id, config.name);
         let mut fdt = FdtBuilder::new()?;
         fdt.setup_cpus(&vcpus)?;
-        fdt.setup_memory(vmspace.memories().iter())?;
+        vmspace.with_memories(|memores| fdt.setup_memory(memores.iter()))?;
+
         fdt.setup_chosen(None)?;
 
         let dtb_data = fdt.build()?;
