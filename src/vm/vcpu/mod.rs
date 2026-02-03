@@ -9,7 +9,7 @@ use axvmconfig::VMInterruptMode;
 
 use crate::{
     CpuId, GuestPhysAddr, HostPhysAddr, RunError, TASK_STACK_SIZE, Vm, VmWeak,
-    arch::HCpu,
+    arch::{HCpu, Hal},
     hal::{
         HCpuOp, HalOp,
         cpu::{CpuHardId, HCpuExclusive},
@@ -20,7 +20,7 @@ mod ls;
 
 pub use ls::*;
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub(crate) struct CpuBootInfo {
     pub kernel_entry: GuestPhysAddr,
     pub dtb_addr: GuestPhysAddr,
@@ -32,6 +32,8 @@ pub(crate) struct CpuBootInfo {
 }
 
 pub(crate) trait VCpuOp: core::fmt::Debug + Send + 'static {
+    type PLAT: Send + 'static;
+    fn setup_plat(&mut self, plat: &Self::PLAT) -> anyhow::Result<()>;
     fn set_boot_info(&mut self, info: &CpuBootInfo) -> anyhow::Result<()>;
     fn get_boot_info(&self) -> CpuBootInfo;
     fn run(&mut self, vm: &Vm) -> Result<(), RunError>;
@@ -47,13 +49,13 @@ pub struct VCpu<H: HalOp> {
 }
 
 impl<H: HalOp> VCpu<H> {
-    pub fn new(bind_id: Option<CpuId>, vm: VmWeak, plat: &mut H::PlatData) -> anyhow::Result<Self> {
+    pub fn new(bind_id: Option<CpuId>, vm: VmWeak) -> anyhow::Result<Self> {
         let hcpu_exclusive = HCpuExclusive::try_new(bind_id)
             .ok_or_else(|| anyhow!("Failed to allocate hardware CPU for bind id {bind_id:?}"))?;
         let hard_id = hcpu_exclusive.hard_id();
         let id = hcpu_exclusive.id();
 
-        let inner = H::new_vcpu(hard_id.clone(), vm.clone(), plat)?;
+        let inner = H::new_vcpu(hard_id.clone(), vm.clone())?;
 
         Ok(Self {
             id,

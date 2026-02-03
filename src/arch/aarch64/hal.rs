@@ -8,6 +8,7 @@ use super::cpu::{HCpu, VCpuHal};
 use crate::arch::PlatData;
 use crate::arch::cpu::CPUState;
 use crate::hal::cpu::{CpuHardId, CpuId};
+use crate::vdev::VDeviceList;
 use crate::{VmWeak, fdt};
 
 pub struct Hal;
@@ -47,16 +48,12 @@ impl crate::hal::HalOp for Hal {
         Ok(cpu)
     }
 
-    fn new_vcpu(
-        hard_id: CpuHardId,
-        vm: VmWeak,
-        plat: &mut Self::PlatData,
-    ) -> anyhow::Result<Self::VCPU> {
+    fn new_vcpu(hard_id: CpuHardId, vm: VmWeak) -> anyhow::Result<Self::VCPU> {
         let vcpu = CPUState::new(hard_id, vm)?;
         Ok(vcpu)
     }
 
-    fn new_plat_data(vdev_manager: &VDeviceManager) -> anyhow::Result<Self::PlatData> {
-        PlatData::new(vdev_manager)
+    fn new_plat_data(vdevs: &VDeviceList) -> anyhow::Result<Self::PlatData> {
+        PlatData::new(vdevs)
     }
 }

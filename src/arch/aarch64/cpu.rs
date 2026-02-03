@@ -7,6 +7,7 @@ use arm_vcpu::{Aarch64PerCpu, Aarch64VCpuCreateConfig, Aarch64VCpuSetupConfig};
 
 use crate::{
     RunError, Vm, VmWeak,
+    arch::{Hal, PlatData},
     hal::{
         HCpuOp,
         cpu::{CpuHardId, CpuId},
@@ -106,7 +107,7 @@ impl arm_vcpu::CpuHal for VCpuHal {
 pub struct CPUState {
     pub vcpu: arm_vcpu::Aarch64VCpu,
     mpidr_el1: u64,
-    boot: CpuBootInfo,
+    boot: Option<CpuBootInfo>,
 }
 
 impl CPUState {
@@ -119,7 +120,7 @@ impl CPUState {
         Ok(CPUState {
             vcpu,
             mpidr_el1: id.raw() as u64,
-            boot: CpuBootInfo::default(),
+            boot: None,
         })
     }
 
@@ -158,7 +159,7 @@ impl VCpuOp for CPUState {
                 arm_vcpu::AxVCpuExitReason::MmioWrite { addr, width, data } => todo!(),
                 arm_vcpu::AxVCpuExitReason::SysRegRead { addr, reg } => {
                     todo!()
-                },
+                }
                 arm_vcpu::AxVCpuExitReason::SysRegWrite { addr, value } => todo!(),
                 arm_vcpu::AxVCpuExitReason::ExternalInterrupt => {
                     axhal::irq::irq_handler(0);
@@ -221,12 +222,18 @@ impl VCpuOp for CPUState {
             self.vcpu.set_gpr(0, arg);
         }
 
-        self.boot = info.clone();
+        self.boot = Some(info.clone());
         Ok(())
     }
 
     fn get_boot_info(&self) -> crate::vcpu::CpuBootInfo {
-        self.boot.clone()
+        self.boot.as_ref().unwrap().clone()
+    }
+
+    type PLAT = PlatData;
+
+    fn setup_plat(&mut self, plat: &Self::PLAT) -> anyhow::Result<()> {
+        todo!()
     }
 }
 

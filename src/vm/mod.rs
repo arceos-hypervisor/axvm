@@ -16,6 +16,7 @@ mod addrspace;
 mod define;
 pub mod machine;
 pub mod vcpu;
+pub mod vdev;
 
 pub use addrspace::*;
 pub use define::*;
