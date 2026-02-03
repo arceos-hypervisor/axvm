@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use axvdev::VDeviceManager;
 use bitmap_allocator::BitAlloc;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::{
@@ -24,7 +25,7 @@ pub trait HalOp: Send + 'static {
     fn cpu_hard_id() -> CpuHardId;
     fn cpu_list() -> Vec<CpuHardId>;
     fn current_cpu_init(id: CpuId) -> anyhow::Result<Self::HCPU>;
-    fn new_plat_data() -> anyhow::Result<Self::PlatData>;
+    fn new_plat_data(vdev_manager: &VDeviceManager) -> anyhow::Result<Self::PlatData>;
     fn new_vcpu(
         hard_id: CpuHardId,
         vm: VmWeak,

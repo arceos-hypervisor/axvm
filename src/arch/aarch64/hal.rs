@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 
 use aarch64_cpu::registers::*;
 use aarch64_cpu_ext::cache::{CacheOp, dcache_range};
+use axvdev::VDeviceManager;
 
 use super::cpu::{HCpu, VCpuHal};
 use crate::arch::PlatData;
@@ -55,7 +56,7 @@ impl crate::hal::HalOp for Hal {
         Ok(vcpu)
     }
 
-    fn new_plat_data() -> anyhow::Result<Self::PlatData> {
-        Ok(PlatData {})
+    fn new_plat_data(vdev_manager: &VDeviceManager) -> anyhow::Result<Self::PlatData> {
+        PlatData::new(vdev_manager)
     }
 }
