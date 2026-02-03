@@ -1,12 +1,15 @@
 use std::{collections::btree_map::BTreeMap, thread::JoinHandle, vec::Vec};
 
-use crate::{CpuHardId, VmAddrSpace, VmWeak, hal::ArchOp, vcpu::VCpu};
+use crate::{
+    CpuHardId, VmAddrSpace, VmWeak,
+    hal::ArchOp,
+    vcpu::{VCpu, VCpuList},
+};
 
 pub struct StateRunning<H: ArchOp> {
     vmspace: VmAddrSpace,
     pub(crate) vm: VmWeak,
-    pub(crate) vcpus: BTreeMap<CpuHardId, VCpu<H>>,
-    threads: Vec<JoinHandle<VCpu<H>>>,
+    pub(crate) vcpus: VCpuList<H>,
 }
 
 impl<H: ArchOp> StateRunning<H> {
@@ -16,17 +19,8 @@ impl<H: ArchOp> StateRunning<H> {
         vmspace: VmAddrSpace,
         vm: VmWeak,
     ) -> anyhow::Result<Self> {
-        let threads = vec![main_cpu];
-        let mut vcpus = BTreeMap::new();
-        for cpu in cpus {
-            vcpus.insert(cpu.hard_id, cpu);
-        }
+        let vcpus = VCpuList::new(cpus, main_cpu, vm.clone());
 
-        Ok(Self {
-            vmspace,
-            vm,
-            threads,
-            vcpus,
-        })
+        Ok(Self { vmspace, vm, vcpus })
     }
 }

@@ -158,7 +158,7 @@ impl Vm {
         entry_point: GuestPhysAddr,
         arg: usize,
     ) -> anyhow::Result<()> {
-        let mut machine = self.machine.write();
+        let mut machine = self.machine.read();
         machine.cpu_up(target_cpu, entry_point, arg)
     }
 }
