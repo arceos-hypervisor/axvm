@@ -1,6 +1,8 @@
 use alloc::boxed::Box;
 
-use crate::{AxVMConfig, CpuHardId, GuestPhysAddr, RunError, hal::HalOp, vcpu::CpuBootInfo};
+use crate::{
+    AccessWidth, AxVMConfig, CpuHardId, GuestPhysAddr, RunError, hal::HalOp, vcpu::CpuBootInfo,
+};
 
 mod init;
 mod running;
@@ -35,5 +37,12 @@ impl<H: HalOp> Machine<H> {
             bail!("VM is not in running state");
         };
         running.vcpus.cpu_up(target_cpu, entry_point, arg)
+    }
+
+    pub fn handle_mmio_read(&self, addr: GuestPhysAddr, width: AccessWidth) -> Option<usize> {
+        let Machine::Running(running) = self else {
+            panic!("VM is not in running state");
+        };
+        running.mmio_map.handle_read(addr, width)
     }
 }

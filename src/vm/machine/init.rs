@@ -27,6 +27,7 @@ pub struct StateInited<H: HalOp> {
     pa_bits: usize,
     vm: VmWeak,
     plat: H::PlatData,
+    vdevs: VDeviceList,
 }
 
 impl<H: HalOp> StateInited<H> {
@@ -100,6 +101,7 @@ impl<H: HalOp> StateInited<H> {
             vmspace,
             vm,
             plat,
+            vdevs,
         })
     }
 
@@ -136,7 +138,14 @@ impl<H: HalOp> StateInited<H> {
 
         let main = self.run_cpu(main)?;
 
-        StateRunning::new(main, self.vcpus, self.vmspace, self.vm, self.plat)
+        StateRunning::new(
+            main,
+            self.vcpus,
+            self.vmspace,
+            self.vm,
+            self.plat,
+            self.vdevs,
+        )
     }
 
     fn run_cpu(&mut self, mut cpu: VCpu<H>) -> anyhow::Result<JoinHandle<VCpu<H>>> {

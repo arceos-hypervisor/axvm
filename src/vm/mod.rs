@@ -7,7 +7,7 @@ use std::sync::{Arc, Weak};
 use spin::RwLock;
 
 use crate::{
-    AxVMConfig, CpuHardId, GuestPhysAddr,
+    AccessWidth, AxVMConfig, CpuHardId, GuestPhysAddr,
     arch::Hal,
     machine::{Machine, StateInited},
 };
@@ -161,6 +161,15 @@ impl Vm {
     ) -> anyhow::Result<()> {
         let mut machine = self.machine.read();
         machine.cpu_up(target_cpu, entry_point, arg)
+    }
+
+    pub(crate) fn handle_mmio_read(
+        &self,
+        addr: GuestPhysAddr,
+        width: AccessWidth,
+    ) -> Option<usize> {
+        let machine = self.machine.read();
+        machine.handle_mmio_read(addr, width)
     }
 }
 
