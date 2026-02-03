@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 use fdt_edit::{Fdt, FdtData, Node, Property, RegInfo, Status};
 
-use crate::{CpuHardId, GuestMemory, GuestPhysAddr, hal::ArchOp, vcpu::VCpu};
+use crate::{CpuHardId, GuestMemory, GuestPhysAddr, hal::HalOp, vcpu::VCpu};
 
 pub(crate) fn fdt_edit() -> Option<Fdt> {
     let addr = axhal::dtb::get_bootarg();
@@ -44,7 +44,7 @@ impl FdtBuilder {
         Ok(dtb_data)
     }
 
-    pub fn setup_cpus<H: ArchOp>(&mut self, vcpus: &[VCpu<H>]) -> anyhow::Result<()> {
+    pub fn setup_cpus<H: HalOp>(&mut self, vcpus: &[VCpu<H>]) -> anyhow::Result<()> {
         let mut rm_nodes = vec![];
         let vcpu_hard_ls = vcpus
             .iter()
