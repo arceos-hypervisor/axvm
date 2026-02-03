@@ -6,6 +6,8 @@ use std::{
     vec::Vec,
 };
 
+use axvdev::VDeviceManager;
+
 use crate::{
     AxVMConfig, GuestPhysAddr, TASK_STACK_SIZE, VmAddrSpace, VmWeak,
     arch::PlatData,
@@ -29,7 +31,9 @@ pub struct StateInited<H: HalOp> {
 impl<H: HalOp> StateInited<H> {
     pub fn new(config: &AxVMConfig, vm: VmWeak) -> anyhow::Result<Self> {
         info!("Initializing VM {} ({})", config.id, config.name);
-        let mut plat = H::new_plat_data()?;
+        let vdev_manager = VDeviceManager::new();
+
+        let mut plat = H::new_plat_data(&vdev_manager)?;
 
         // Get vCPU count
         let mut vcpus = Self::new_vcpus(config, vm.clone(), &mut plat)?;
