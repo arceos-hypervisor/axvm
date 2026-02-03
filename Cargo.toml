@@ -38,6 +38,8 @@ axvm-types.workspace = true
 axvmconfig = {version = "0.1", default-features = false}
 fdt-edit = "0.1"
 
+axvdev = { version = "0.1" }
+
 ringbuf = { version = "0.4", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]

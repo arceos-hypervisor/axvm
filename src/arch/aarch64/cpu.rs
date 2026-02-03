@@ -156,7 +156,9 @@ impl VCpuOp for CPUState {
                     signed_ext,
                 } => todo!(),
                 arm_vcpu::AxVCpuExitReason::MmioWrite { addr, width, data } => todo!(),
-                arm_vcpu::AxVCpuExitReason::SysRegRead { addr, reg } => todo!(),
+                arm_vcpu::AxVCpuExitReason::SysRegRead { addr, reg } => {
+                    todo!()
+                },
                 arm_vcpu::AxVCpuExitReason::SysRegWrite { addr, value } => todo!(),
                 arm_vcpu::AxVCpuExitReason::ExternalInterrupt => {
                     axhal::irq::irq_handler(0);
