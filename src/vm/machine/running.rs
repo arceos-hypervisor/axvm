@@ -12,8 +12,7 @@ pub struct StateRunning<H: HalOp> {
     pub(crate) vm: VmWeak,
     pub(crate) vcpus: VCpuList<H>,
     plat: H::PlatData,
-    vdevs: VDeviceList,
-    pub(crate) mmio_map: MmioRegions,
+    pub(crate) vdevs: VDeviceList,
 }
 
 impl<H: HalOp> StateRunning<H> {
@@ -26,14 +25,12 @@ impl<H: HalOp> StateRunning<H> {
         vdevs: VDeviceList,
     ) -> anyhow::Result<Self> {
         let vcpus = VCpuList::new(cpus, main_cpu, vm.clone());
-        let mmio_map = vmspace.mmio_map();
         Ok(Self {
             vmspace,
             vm,
             vcpus,
             plat,
             vdevs,
-            mmio_map,
         })
     }
 }

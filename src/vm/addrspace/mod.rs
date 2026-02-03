@@ -260,7 +260,12 @@ impl VmAddrSpace {
         Ok(())
     }
 
-    pub fn new_mmio(&self, gpa: Option<GuestPhysAddr>, size: usize) -> anyhow::Result<MmioRegion> {
+    pub fn new_mmio(
+        &self,
+        dev_id: u32,
+        gpa: Option<GuestPhysAddr>,
+        size: usize,
+    ) -> anyhow::Result<MmioRegion> {
         let mut g = self.0.lock();
         let array = Array::new(size, 0x1000);
 
@@ -276,13 +281,17 @@ impl VmAddrSpace {
             kind: VmRegionKind::Mmio,
         });
 
-        g.mmio.add_region(GuestMemory {
-            gpa,
-            hva,
-            layout: Layout::from_size_align(size, 0x1000).unwrap(),
-            _payload: Some(array),
-            aspace,
-        });
+        g.mmio.add_region(GuestMmio::new(
+            dev_id,
+            GuestMemory {
+                gpa,
+                hva,
+                layout: Layout::from_size_align(size, 0x1000).unwrap(),
+                _payload: Some(array),
+                aspace,
+            },
+        ));
+
         Ok(MmioRegion {
             addr: gpa.as_usize().into(),
             access: NonNull::new(hva.as_usize() as *mut u8).unwrap(),
@@ -389,6 +398,31 @@ impl Drop for Array {
     }
 }
 
+pub(crate) struct GuestMmio {
+    pub(crate) dev_id: u32,
+    m: GuestMemory,
+}
+
+impl GuestMmio {
+    pub fn new(dev_id: u32, m: GuestMemory) -> Self {
+        Self { dev_id, m }
+    }
+}
+
+impl Deref for GuestMmio {
+    type Target = GuestMemory;
+
+    fn deref(&self) -> &Self::Target {
+        &self.m
+    }
+}
+
+impl DerefMut for GuestMmio {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.m
+    }
+}
+
 pub struct GuestMemory {
     gpa: GuestPhysAddr,
     hva: HostVirtAddr,
@@ -424,6 +458,10 @@ impl GuestMemory {
                 break;
             }
         }
+    }
+
+    pub fn hva(&self) -> HostVirtAddr {
+        self.hva
     }
 
     pub fn gpa(&self) -> GuestPhysAddr {

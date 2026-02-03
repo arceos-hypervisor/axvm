@@ -33,12 +33,15 @@ impl PlatData {
         let regs = node.regs().ok_or(anyhow!("Gic node has no regs"))?;
         let gicd = regs.get(0).ok_or(anyhow!("No GICD reg"))?;
         let gicr = regs.get(1).ok_or(anyhow!("No GICR reg"))?;
+        let plat = self.vdev.new_plat();
 
         let gic = v3::VGic::new(
             (gicd.address as usize).into(),
             (gicr.address as usize).into(),
-            self.vdev.clone(),
+            plat.clone(),
         );
+
+        self.vdev.add_device(&plat, gic);
 
         Ok(())
     }
