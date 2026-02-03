@@ -6,6 +6,8 @@ version = "0.1.0"
 [features]
 default = ["vmx"]
 vmx = []
+virtio-blk = ["axdevice/virtio-blk", "dep:axdriver_block", "dep:axvirtio-blk"]
+virtio-console = ["axdevice/virtio-console"]
 # Note: 4-level-ept support is now provided through dynamic page table selection in axaddrspace
 # The feature gate is no longer needed
 
@@ -32,6 +34,8 @@ derive_more = { version = "2", default-features = false, features = ["full"] }
 
 # System dependent modules provided by ArceOS-Hypervisor.
 axaddrspace = "0.2"
+axdevice = {path = "../axdevice"}
+axdevice_base = {path = "../axdevice_base"}
 
 axhal.workspace = true
 axruntime.workspace = true
@@ -40,13 +44,22 @@ axvm-types.workspace = true
 axvmconfig = {version = "0.1", default-features = false}
 fdt-edit = "0.1"
 
+# VirtIO block device support (optional)
+axdriver_block = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "dev-v01", optional = true }
+axvirtio-blk = { git = "https://github.com/arceos-hypervisor/axvirtio-devices.git", branch = "yanlien/next",optional = true }
+
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 raw-cpuid = "11"
 x86_vcpu = "0.1"
 axplat-x86-qemu-q35.workspace = true
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
-# riscv_vcpu = "0.1"
+riscv = { version = "0.14.0", features = ["s-mode"] }
+riscv_vcpu = { path = "../riscv_vcpu"}
+sbi-rt = { version = "0.0.3", features = ["integer-impls"] }
+axplat.workspace = true
+axvisor_api.workspace = true
+axplat-riscv64-qemu-virt.workspace = true
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 aarch64-cpu = "11.0"

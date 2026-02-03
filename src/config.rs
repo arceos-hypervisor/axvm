@@ -51,6 +51,9 @@ pub struct AxVMConfig {
     pub image_config: VMImagesConfig,
     pub memory_regions: Vec<MemoryKind>,
     pub interrupt_mode: VMInterruptMode,
+    pub emu_devices: Vec<EmulatedDeviceConfig>,
+    /// Passthrough address regions for devices like UART that should be identity mapped.
+    pub passthrough_addresses: Vec<PassThroughAddressConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,5 +96,10 @@ impl AxVMConfig {
     /// Returns the interrupt mode of the VM.
     pub fn interrupt_mode(&self) -> VMInterruptMode {
         self.interrupt_mode
+    }
+
+    /// Returns the emulated devices configuration.
+    pub fn emu_devices(&self) -> &[EmulatedDeviceConfig] {
+        &self.emu_devices
     }
 }

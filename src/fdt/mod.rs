@@ -1,14 +1,17 @@
 use alloc::vec::Vec;
 use fdt_edit::{Fdt, FdtData, Node, Property, RegInfo, Status};
+use memory_addr::PhysAddr;
 
 use crate::{GuestMemory, GuestPhysAddr, vcpu::VCpuCommon, hal::cpu::CpuHardId};
 
 pub(crate) fn fdt_edit() -> Option<Fdt> {
-    let addr = axhal::dtb::get_bootarg();
-    if addr == 0 {
+    let paddr = axhal::dtb::get_bootarg();
+    if paddr == 0 {
         return None;
     }
-    let fdt = unsafe { Fdt::from_ptr(addr as *mut u8).ok()? };
+    // Convert physical address to virtual address
+    let vaddr = axhal::mem::phys_to_virt(PhysAddr::from(paddr));
+    let fdt = unsafe { Fdt::from_ptr(vaddr.as_mut_ptr()).ok()? };
     Some(fdt)
 }
 
@@ -78,11 +81,23 @@ impl FdtBuilder {
             .into_iter()
             .map(|o| o.path())
             .collect::<Vec<_>>();
+
+        log::info!("[FDT] Removing {} existing memory nodes", nodes.len());
+        for path in &nodes {
+            log::info!("[FDT]   Removing node: {}", path);
+        }
         for path in nodes {
             self.fdt.remove_node(&path).unwrap();
         }
 
         for (i, m) in memories.enumerate() {
+            log::info!(
+                "[FDT] Adding memory@{}: GPA={:#x}, size={:#x} ({}MB)",
+                i,
+                m.gpa().as_usize(),
+                m.size(),
+                m.size() / (1024 * 1024)
+            );
             let mut node = Node::new(&format!("memory@{i}"));
             let mut prop = Property::new("device_type", vec![]);
             prop.set_string("memory");
@@ -129,11 +144,25 @@ impl FdtBuilder {
             node.node.remove_property("linux,initrd-end");
         };
 
-        if let Some(args) = node.node.get_property_mut("bootargs")
-            && let Some(s) = args.as_str()
-        {
-            let bootargs = s.replace(" ro ", " rw ");
-            args.set_string(&bootargs);
+        // Set bootargs and stdout-path for guest Linu·x console output
+        // const DEFAULT_BOOTARGS: &str = "earlycon=sbi console=hvc0 init=/init root=/dev/vda rw";
+        const DEFAULT_BOOTARGS: &str = "earlycon=sbi console=ttyS0,115200 init=/init root=/dev/vda rw";
+        const DEFAULT_STDOUT_PATH: &str = "/soc/serial@10000000";
+
+        // Handle bootargs
+        if node.node.get_property("bootargs").is_none() {
+            let mut prop = Property::new("bootargs", vec![]);
+            prop.set_string(DEFAULT_BOOTARGS);
+            node.node.add_property(prop);
+            log::info!("[FDT] Added bootargs: {}", DEFAULT_BOOTARGS);
+        }
+
+        // Handle stdout-path
+        if node.node.get_property("stdout-path").is_none() {
+            let mut prop = Property::new("stdout-path", vec![]);
+            prop.set_string(DEFAULT_STDOUT_PATH);
+            node.node.add_property(prop);
+            log::info!("[FDT] Added stdout-path: {}", DEFAULT_STDOUT_PATH);
         }
 
         Ok(())

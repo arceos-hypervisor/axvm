@@ -6,6 +6,7 @@ mod define;
 mod machine;
 
 pub(crate) use addrspace::*;
+pub use addrspace::VmGuestMemoryAccessor;
 pub use define::*;
 pub use machine::*;
 
