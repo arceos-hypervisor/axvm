@@ -193,6 +193,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             )?));
         }
 
+        info!(
+            "VM[{}] vCPU list created: {} vCPUs",
+            self.id(),
+            vcpu_list.len()
+        );
+
         let mut pt_dev_region = Vec::new();
         for pt_device in inner_mut.config.pass_through_devices() {
             trace!(
