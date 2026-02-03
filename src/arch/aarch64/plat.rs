@@ -1,18 +1,17 @@
 use arm_vgic::v3;
-use axvdev::VDeviceManager;
+
+use crate::vdev::VDeviceList;
 
 pub struct PlatData {
-    vdev: VDeviceManager,
+    vdev: VDeviceList,
 }
 
 impl PlatData {
-    pub fn new(vdev_manager: &VDeviceManager) -> anyhow::Result<Self> {
+    pub fn new(vdev_manager: &VDeviceList) -> anyhow::Result<Self> {
         Ok(Self {
             vdev: vdev_manager.clone(),
         })
     }
 }
 
-fn new_vgic_v3(){
-    
-}
+fn new_vgic_v3() {}

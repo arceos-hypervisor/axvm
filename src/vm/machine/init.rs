@@ -16,6 +16,7 @@ use crate::{
     hal::{HCpuOp, HalOp},
     machine::running::StateRunning,
     vcpu::{CpuBootInfo, VCpu},
+    vdev::VDeviceList,
 };
 
 pub struct StateInited<H: HalOp> {
@@ -31,12 +32,9 @@ pub struct StateInited<H: HalOp> {
 impl<H: HalOp> StateInited<H> {
     pub fn new(config: &AxVMConfig, vm: VmWeak) -> anyhow::Result<Self> {
         info!("Initializing VM {} ({})", config.id, config.name);
-        let vdev_manager = VDeviceManager::new();
-
-        let mut plat = H::new_plat_data(&vdev_manager)?;
 
         // Get vCPU count
-        let mut vcpus = Self::new_vcpus(config, vm.clone(), &mut plat)?;
+        let mut vcpus = Self::new_vcpus(config, vm.clone())?;
         let addrspace_info = calculate_addrspace_info(&vcpus);
         let pt_levels = addrspace_info.pt_levels;
         let pa_max = addrspace_info.pa_max;
@@ -52,6 +50,11 @@ impl<H: HalOp> StateInited<H> {
         );
 
         let mut vmspace = VmAddrSpace::new(pt_levels, GuestPhysAddr::from_usize(0)..pa_max.into())?;
+
+        let vdevs = VDeviceList::new(&vmspace);
+
+        let mut plat = H::new_plat_data(&vdevs)?;
+
         debug!(
             "Mapping memory regions for VM {} ({})",
             config.id, config.name
@@ -100,23 +103,19 @@ impl<H: HalOp> StateInited<H> {
         })
     }
 
-    fn new_vcpus(
-        config: &AxVMConfig,
-        vm: VmWeak,
-        plat: &mut H::PlatData,
-    ) -> anyhow::Result<Vec<VCpu<H>>> {
+    fn new_vcpus(config: &AxVMConfig, vm: VmWeak) -> anyhow::Result<Vec<VCpu<H>>> {
         let mut vcpus = vec![];
         match config.cpu_num {
             CpuNumType::Alloc(num) => {
                 for _ in 0..num {
-                    let vcpu = VCpu::new(None, vm.clone(), plat)?;
+                    let vcpu = VCpu::new(None, vm.clone())?;
                     debug!("Created vCPU with {:?}", vcpu.bind_id());
                     vcpus.push(vcpu);
                 }
             }
             CpuNumType::Fixed(ref ids) => {
                 for id in ids {
-                    let vcpu = VCpu::new(Some(*id), vm.clone(), plat)?;
+                    let vcpu = VCpu::new(Some(*id), vm.clone())?;
                     debug!("Created vCPU with {:?}", vcpu.bind_id());
                     vcpus.push(vcpu);
                 }
