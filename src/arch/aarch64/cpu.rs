@@ -172,6 +172,8 @@ impl VCpuOp for CPUState {
                             "MMIO read @{addr:#x} no device"
                         )));
                     }
+
+                    todo!()
                 }
                 arm_vcpu::AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     debug!("vCPU {:#x} MMIO write at addr {:#x}", self.mpidr_el1, addr);

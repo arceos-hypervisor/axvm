@@ -43,6 +43,6 @@ impl<H: HalOp> Machine<H> {
         let Machine::Running(running) = self else {
             panic!("VM is not in running state");
         };
-        running.mmio_map.handle_read(addr, width)
+        running.vdevs.handle_mmio_read(addr, width)
     }
 }
