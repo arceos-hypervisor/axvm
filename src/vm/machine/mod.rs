@@ -26,7 +26,7 @@ impl<H: ArchOp> Machine<H> {
     }
 
     pub fn cpu_up(
-        &mut self,
+        &self,
         target_cpu: CpuHardId,
         entry_point: GuestPhysAddr,
         arg: usize,
@@ -34,21 +34,6 @@ impl<H: ArchOp> Machine<H> {
         let Machine::Running(running) = self else {
             bail!("VM is not in running state");
         };
-
-        let mut cpu = running
-            .vcpus
-            .remove(&target_cpu)
-            .ok_or_else(|| anyhow!("Target CPU not found"))?;
-        let info = cpu.get_boot_info();
-
-        cpu.set_boot_info(&CpuBootInfo {
-            kernel_entry: entry_point,
-            secondary_boot_arg: Some(arg),
-            ..info
-        })?;
-        let vm = running.vm.clone();
-        cpu.run_in_thread(vm, false)?;
-
-        Ok(())
+        running.vcpus.cpu_up(target_cpu, entry_point, arg)
     }
 }
