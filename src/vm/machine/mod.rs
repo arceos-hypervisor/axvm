@@ -45,4 +45,16 @@ impl<H: HalOp> Machine<H> {
         };
         running.vdevs.handle_mmio_read(addr, width)
     }
+
+    pub fn handle_mmio_write(
+        &self,
+        addr: GuestPhysAddr,
+        width: AccessWidth,
+        data: usize,
+    ) -> Option<()> {
+        let Machine::Running(running) = self else {
+            panic!("VM is not in running state");
+        };
+        running.vdevs.handle_mmio_write(addr, width, data)
+    }
 }

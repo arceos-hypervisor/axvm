@@ -24,9 +24,10 @@ impl VDevice {
         self.id
     }
 
-    pub fn run(&self) {
-        let mut dev = self.raw.lock();
-        dev.run();
+    pub fn try_invoke(&self) {
+        if let Some(mut dev) = self.raw.try_lock() {
+            dev.invoke();
+        }
     }
 }
 
@@ -84,7 +85,7 @@ impl VDeviceList {
 
     pub fn handle_mmio_read(&self, addr: GuestPhysAddr, width: AccessWidth) -> Option<usize> {
         let mmio = &self.mmio;
-        for (id, region) in unsafe { &(*mmio.inner.get()).regions } {
+        for (&id, region) in unsafe { &(*mmio.inner.get()).regions } {
             if addr >= region.gpa()
                 && addr.as_usize() + width.size() <= region.gpa().as_usize() + region.size()
             {
@@ -94,7 +95,7 @@ impl VDeviceList {
                     width,
                     id
                 );
-                self.get_device(*id).unwrap().run();
+                self.device_try_invoke(id);
 
                 let offset = addr.as_usize() - region.gpa().as_usize();
                 let access_ptr = unsafe { region.hva().as_ptr().add(offset) };
@@ -108,6 +109,45 @@ impl VDeviceList {
             }
         }
         None
+    }
+
+    pub fn handle_mmio_write(
+        &self,
+        addr: GuestPhysAddr,
+        width: AccessWidth,
+        data: usize,
+    ) -> Option<()> {
+        let mmio = &self.mmio;
+        for (&id, region) in unsafe { &(*mmio.inner.get()).regions } {
+            if addr >= region.gpa()
+                && addr.as_usize() + width.size() <= region.gpa().as_usize() + region.size()
+            {
+                debug!(
+                    "VDev MMIO write addr={:#x} width={:?} data={:#x} dev_id={}",
+                    addr.as_usize(),
+                    width,
+                    data,
+                    id
+                );
+
+                let offset = addr.as_usize() - region.gpa().as_usize();
+                let access_ptr = unsafe { region.hva().as_ptr().add(offset) };
+                match width {
+                    AccessWidth::Byte => unsafe { *(access_ptr as *mut u8) = data as u8 },
+                    AccessWidth::Word => unsafe { *(access_ptr as *mut u16) = data as u16 },
+                    AccessWidth::Dword => unsafe { *(access_ptr as *mut u32) = data as u32 },
+                    AccessWidth::Qword => unsafe { *(access_ptr as *mut u64) = data as u64 },
+                };
+
+                self.device_try_invoke(id);
+                return Some(());
+            }
+        }
+        None
+    }
+
+    fn device_try_invoke(&self, id: u32) {
+        self.get_device(*id).unwrap().try_invoke();
     }
 }
 
@@ -140,7 +180,7 @@ impl VirtPlatformOp for VDevPlat {
         todo!()
     }
 
-    fn invoke_irq(&self, irq: IrqNum) {
+    fn send_irq(&self, irq: IrqNum) {
         todo!()
     }
 }

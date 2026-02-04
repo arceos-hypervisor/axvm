@@ -34,15 +34,21 @@ impl PlatData {
         let gicd = regs.get(0).ok_or(anyhow!("No GICD reg"))?;
         let gicr = regs.get(1).ok_or(anyhow!("No GICR reg"))?;
         let plat = self.vdev.new_plat();
+        let mut gic = v3::VGic::new();
+
+        // self.vdev.add_device(|plat| {
+        //     let gic = v3::VGic::new(
+        //         (gicd.address as usize).into(),
+        //         (gicr.address as usize).into(),
+        //         plat.clone(),
+        //     );
+        //     Ok(gic)
+        // });
 
         self.vdev.add_device(|plat| {
-            let gic = v3::VGic::new(
-                (gicd.address as usize).into(),
-                (gicr.address as usize).into(),
-                plat.clone(),
-            );
-            Ok(gic)
-        });
+            let gicd = gic.new_gicd(plat.clone(), (gicd.address as usize).into());
+            Ok(gicd)
+        })?;
 
         Ok(())
     }
