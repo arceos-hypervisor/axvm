@@ -171,6 +171,16 @@ impl Vm {
         let machine = self.machine.read();
         machine.handle_mmio_read(addr, width)
     }
+
+    pub(crate) fn handle_mmio_write(
+        &self,
+        addr: GuestPhysAddr,
+        width: AccessWidth,
+        data: usize,
+    ) -> Option<()> {
+        let machine = self.machine.read();
+        machine.handle_mmio_write(addr, width, data)
+    }
 }
 
 #[derive(Clone)]
