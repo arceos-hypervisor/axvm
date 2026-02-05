@@ -1,7 +1,11 @@
 use alloc::vec::Vec;
 use axvdev::VDeviceManager;
 use bitmap_allocator::BitAlloc;
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+    ptr::NonNull,
+    sync::atomic::{AtomicUsize, Ordering},
+};
+use mmio_api::{Mmio, MmioOp};
 use std::{
     os::arceos::{api::task::AxCpuMask, modules::axtask::set_current_affinity},
     thread::yield_now,
@@ -93,4 +97,22 @@ pub fn virt_to_phys(vaddr: HostVirtAddr) -> HostPhysAddr {
     axhal::mem::virt_to_phys(vaddr.as_usize().into())
         .as_usize()
         .into()
+}
+
+pub struct Ioremap;
+
+impl MmioOp for Ioremap {
+    fn ioremap(
+        &self,
+        addr: mmio_api::MmioAddr,
+        size: usize,
+    ) -> Result<mmio_api::Mmio, anyhow::Error> {
+        let paddr = addr.as_usize();
+        let vaddr = axklib::mem::iomap(paddr.into(), size).unwrap();
+        Ok(unsafe { Mmio::new(addr, NonNull::new_unchecked(vaddr.as_mut_ptr()), size) })
+    }
+
+    fn iounmap(&self, mmio: &mmio_api::Mmio) {
+        todo!()
+    }
 }

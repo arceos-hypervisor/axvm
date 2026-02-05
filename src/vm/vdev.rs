@@ -147,7 +147,7 @@ impl VDeviceList {
     }
 
     fn device_try_invoke(&self, id: u32) {
-        self.get_device(*id).unwrap().try_invoke();
+        self.get_device(id).unwrap().try_invoke();
     }
 }
 
