@@ -18,7 +18,8 @@ pub mod timer;
 use cpu::{CpuHardId, CpuId};
 
 use crate::{
-    HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE, VmWeak, arch::Hal, vcpu::VCpuOp, vdev::VDeviceList,
+    AxVMConfig, HostPhysAddr, HostVirtAddr, TASK_STACK_SIZE, VmWeak, arch::Hal, vcpu::VCpuOp,
+    vdev::VDeviceList,
 };
 
 pub trait HalOp: Send + 'static {
@@ -31,7 +32,7 @@ pub trait HalOp: Send + 'static {
     fn cpu_hard_id() -> CpuHardId;
     fn cpu_list() -> Vec<CpuHardId>;
     fn current_cpu_init(id: CpuId) -> anyhow::Result<Self::HCPU>;
-    fn new_plat_data(vdevs: &VDeviceList) -> anyhow::Result<Self::PlatData>;
+    fn new_plat_data(config: &AxVMConfig, vdevs: &VDeviceList) -> anyhow::Result<Self::PlatData>;
     fn new_vcpu(hard_id: CpuHardId, vm: VmWeak) -> anyhow::Result<Self::VCPU>;
 }
 

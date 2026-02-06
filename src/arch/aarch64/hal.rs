@@ -9,7 +9,7 @@ use crate::arch::PlatData;
 use crate::arch::cpu::CPUState;
 use crate::hal::cpu::{CpuHardId, CpuId};
 use crate::vdev::VDeviceList;
-use crate::{VmWeak, fdt};
+use crate::{AxVMConfig, VmWeak, fdt};
 
 pub struct Hal;
 
@@ -53,7 +53,7 @@ impl crate::hal::HalOp for Hal {
         Ok(vcpu)
     }
 
-    fn new_plat_data(vdevs: &VDeviceList) -> anyhow::Result<Self::PlatData> {
-        PlatData::new(vdevs)
+    fn new_plat_data(config: &AxVMConfig, vdevs: &VDeviceList) -> anyhow::Result<Self::PlatData> {
+        PlatData::new(config, vdevs)
     }
 }

@@ -1,25 +1,31 @@
 use arm_gic_driver::IntId;
 use arm_vgic::{IrqChipOp, v3};
 use axvdev::IrqNum;
+use axvmconfig::VMInterruptMode;
 use rdif_intc::Intc;
 
-use crate::{fdt::fdt_edit, hal::Ioremap, vdev::VDeviceList};
+use crate::{AxVMConfig, fdt::fdt_edit, hal::Ioremap, vdev::VDeviceList};
 
 pub struct PlatData {
     vdev: VDeviceList,
+    irq_passthrough: bool,
 }
 
 impl PlatData {
-    pub fn new(vdev_manager: &VDeviceList) -> anyhow::Result<Self> {
+    pub fn new(config: &AxVMConfig, vdev_manager: &VDeviceList) -> anyhow::Result<Self> {
         let mut s = Self {
             vdev: vdev_manager.clone(),
+            irq_passthrough: config.interrupt_mode == VMInterruptMode::Passthrough,
         };
         s.init()?;
         Ok(s)
     }
 
     fn init(&mut self) -> anyhow::Result<()> {
-        // self.new_vgic_v3()?;
+        if !self.irq_passthrough {
+            info!("Initializing GICv3 for interrupt virtualization");
+            self.new_vgic_v3()?;
+        }
         Ok(())
     }
 
@@ -84,5 +90,13 @@ impl IrqChipOp for IrqOp {
             arm_vgic::Trigger::Edge => arm_gic_driver::v3::Trigger::Edge,
         };
         with_gicv3(|gic| gic.set_cfg(covnert_irq(irq), t));
+    }
+
+    fn set_enable(&self, irq: IrqNum, enable: bool) {
+        with_gicv3(|gic| gic.set_irq_enable(covnert_irq(irq), enable));
+    }
+
+    fn is_enabled(&self, irq: IrqNum) -> bool {
+        with_gicv3(|gic| gic.is_irq_enable(covnert_irq(irq)))
     }
 }
