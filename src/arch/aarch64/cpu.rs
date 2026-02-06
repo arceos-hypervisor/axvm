@@ -190,7 +190,12 @@ impl VCpuOp for CPUState {
                 }
                 arm_vcpu::AxVCpuExitReason::SysRegWrite { addr, value } => todo!(),
                 arm_vcpu::AxVCpuExitReason::ExternalInterrupt => {
-                    axhal::irq::irq_handler(0);
+                    if !axhal::irq::irq_handler(0) {
+                        unimplemented!(
+                            "No handler for external interrupt in vCPU {:#x}",
+                            self.mpidr_el1
+                        );
+                    }
                 }
                 arm_vcpu::AxVCpuExitReason::CpuUp {
                     target_cpu,

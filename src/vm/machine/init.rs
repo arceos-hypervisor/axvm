@@ -54,7 +54,7 @@ impl<H: HalOp> StateInited<H> {
 
         let vdevs = VDeviceList::new(&vmspace);
 
-        let mut plat = H::new_plat_data(&vdevs)?;
+        let mut plat = H::new_plat_data(config, &vdevs)?;
 
         debug!(
             "Mapping memory regions for VM {} ({})",
