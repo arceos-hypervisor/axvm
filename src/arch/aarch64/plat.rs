@@ -19,7 +19,7 @@ impl PlatData {
     }
 
     fn init(&mut self) -> anyhow::Result<()> {
-        self.new_vgic_v3()?;
+        // self.new_vgic_v3()?;
         Ok(())
     }
 
