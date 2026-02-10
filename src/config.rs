@@ -228,6 +228,7 @@ impl PhysCpuList {
     /// - The physical id of the vCpu, equal to vCpu id if not provided.
     pub fn get_vcpu_affinities_pcpu_ids(&self) -> Vec<(usize, Option<usize>, usize)> {
         let mut vcpu_pcpu_tuples = Vec::new();
+        #[cfg(target_arch = "riscv64")]
         let mut pcpu_mask_flag = false;
 
         if let Some(phys_cpu_ids) = &self.phys_cpu_ids
@@ -243,8 +244,16 @@ impl PhysCpuList {
             vcpu_pcpu_tuples.push((vcpu_id, None, vcpu_id));
         }
 
+        #[cfg(target_arch = "riscv64")]
         if let Some(phys_cpu_sets) = &self.phys_cpu_sets {
             pcpu_mask_flag = true;
+            for (vcpu_id, pcpu_mask_bitmap) in phys_cpu_sets.iter().enumerate() {
+                vcpu_pcpu_tuples[vcpu_id].1 = Some(*pcpu_mask_bitmap);
+            }
+        }
+
+        #[cfg(not(target_arch = "riscv64"))]
+        if let Some(phys_cpu_sets) = &self.phys_cpu_sets {
             for (vcpu_id, pcpu_mask_bitmap) in phys_cpu_sets.iter().enumerate() {
                 vcpu_pcpu_tuples[vcpu_id].1 = Some(*pcpu_mask_bitmap);
             }
@@ -255,7 +264,7 @@ impl PhysCpuList {
                 vcpu_pcpu_tuples[vcpu_id].2 = *phys_id;
                 #[cfg(target_arch = "riscv64")]
                 {
-                    if pcpu_mask_flag == false {
+                    if !pcpu_mask_flag {
                         // if don't assign pcpu mask yet, assign it manually
                         vcpu_pcpu_tuples[vcpu_id].1 = Some(1 << (*phys_id));
                     }

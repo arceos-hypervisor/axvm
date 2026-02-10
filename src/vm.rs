@@ -29,11 +29,13 @@ use axvcpu::{AxVCpu, AxVCpuExitReason, AxVCpuHal};
 use cpumask::CpuMask;
 
 use crate::config::{AxVMConfig, PhysCpuList};
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
+use crate::vcpu::AxArchVCpuImpl;
 use crate::{AxVMHal, has_hardware_support};
 
+#[cfg(target_arch = "riscv64")]
+use crate::vcpu::AxVCpuCreateConfig;
 #[cfg(target_arch = "aarch64")]
-use crate::vcpu::get_sysreg_device;
+use crate::vcpu::{AxVCpuCreateConfig, get_sysreg_device};
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -202,15 +204,18 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 hart_id: vcpu_id as _,
                 dtb_addr: dtb_addr.unwrap_or_default().as_usize(),
             };
-            #[cfg(target_arch = "x86_64")]
-            let arch_config = AxVCpuCreateConfig::default();
 
             vcpu_list.push(Arc::new(VCpu::new(
                 self.id(),
                 vcpu_id,
                 0, // Currently not used.
                 phys_cpu_set,
+                #[cfg(target_arch = "aarch64")]
                 arch_config,
+                #[cfg(target_arch = "riscv64")]
+                arch_config,
+                #[cfg(target_arch = "x86_64")]
+                (),
             )?));
         }
 
@@ -273,7 +278,12 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             )?;
         }
 
+        #[cfg(target_arch = "aarch64")]
         let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
+            emu_configs: inner_mut.config.emu_devices().to_vec(),
+        });
+        #[cfg(not(target_arch = "aarch64"))]
+        let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
             emu_configs: inner_mut.config.emu_devices().to_vec(),
         });
 
@@ -336,8 +346,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     passthrough_timer: passthrough,
                 }
             };
-            #[cfg(not(target_arch = "aarch64"))]
-            let setup_config = <AxArchVCpuImpl<U> as axvcpu::AxArchVCpu>::SetupConfig::default();
 
             let entry = if vcpu.id() == 0 {
                 inner_mut.config.bsp_entry()
@@ -350,7 +358,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             vcpu.setup(
                 entry,
                 inner_mut.address_space.page_table_root(),
+                #[cfg(target_arch = "aarch64")]
                 setup_config,
+                #[cfg(not(target_arch = "aarch64"))]
+                (),
             )?;
         }
         info!("VM setup: id={}", self.id());
@@ -639,7 +650,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let size = core::mem::size_of::<T>();
 
         // Ensure the address is properly aligned for the type.
-        if gpa_ptr.as_usize() % core::mem::align_of::<T>() != 0 {
+        if !gpa_ptr
+            .as_usize()
+            .is_multiple_of(core::mem::align_of::<T>())
+        {
             return ax_err!(InvalidInput, "Unaligned guest physical address");
         }
 
