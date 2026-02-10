@@ -1,3 +1,17 @@
+// Copyright 2025 The Axvisor Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
@@ -196,7 +210,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 vcpu_id,
                 0, // Currently not used.
                 phys_cpu_set,
-                arch_config,
+                (),
             )?));
         }
 
@@ -259,6 +273,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             )?;
         }
 
+        #[cfg(target_arch = "aarch64")]
         let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
             emu_configs: inner_mut.config.emu_devices().to_vec(),
         });
@@ -500,11 +515,13 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     signed_ext: _,
                 } => {
                     let val = self.get_devices().handle_mmio_read(*addr, *width)?;
+                    let val = self.get_devices().handle_mmio_read(*addr, *width)?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     self.get_devices()
+                        .handle_mmio_write(*addr, *width, *data as usize)?;
                         .handle_mmio_write(*addr, *width, *data as usize)?;
                     true
                 }
@@ -625,7 +642,10 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let size = core::mem::size_of::<T>();
 
         // Ensure the address is properly aligned for the type.
-        if gpa_ptr.as_usize() % core::mem::align_of::<T>() != 0 {
+        if !gpa_ptr
+            .as_usize()
+            .is_multiple_of(core::mem::align_of::<T>())
+        {
             return ax_err!(InvalidInput, "Unaligned guest physical address");
         }
 
@@ -676,6 +696,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     )
                 };
                 let mut copied_bytes = 0;
+                for chunk in buffer.iter_mut() {
                 for chunk in buffer.iter_mut() {
                     let end = copied_bytes + chunk.len();
                     chunk.copy_from_slice(&bytes[copied_bytes..end]);
