@@ -210,7 +210,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 vcpu_id,
                 0, // Currently not used.
                 phys_cpu_set,
-                (),
+                arch_config,
             )?));
         }
 
@@ -273,7 +273,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
             )?;
         }
 
-        #[cfg(target_arch = "aarch64")]
         let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
             emu_configs: inner_mut.config.emu_devices().to_vec(),
         });
@@ -640,10 +639,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
         let size = core::mem::size_of::<T>();
 
         // Ensure the address is properly aligned for the type.
-        if !gpa_ptr
-            .as_usize()
-            .is_multiple_of(core::mem::align_of::<T>())
-        {
+        if gpa_ptr.as_usize() % core::mem::align_of::<T>() != 0 {
             return ax_err!(InvalidInput, "Unaligned guest physical address");
         }
 
