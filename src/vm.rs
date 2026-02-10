@@ -515,13 +515,11 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     signed_ext: _,
                 } => {
                     let val = self.get_devices().handle_mmio_read(*addr, *width)?;
-                    let val = self.get_devices().handle_mmio_read(*addr, *width)?;
                     vcpu.set_gpr(*reg, val);
                     true
                 }
                 AxVCpuExitReason::MmioWrite { addr, width, data } => {
                     self.get_devices()
-                        .handle_mmio_write(*addr, *width, *data as usize)?;
                         .handle_mmio_write(*addr, *width, *data as usize)?;
                     true
                 }
@@ -696,7 +694,6 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                     )
                 };
                 let mut copied_bytes = 0;
-                for chunk in buffer.iter_mut() {
                 for chunk in buffer.iter_mut() {
                     let end = copied_bytes + chunk.len();
                     chunk.copy_from_slice(&bytes[copied_bytes..end]);
