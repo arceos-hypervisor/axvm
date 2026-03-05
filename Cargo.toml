@@ -26,9 +26,11 @@ percpu = { version = "0.2.0", features = ["arm-el2"] }
 axvcpu = "0.1"
 axaddrspace = "0.2"
 axvisor_api = "0.2"
-axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "aar-master" }
+# axdevice = { git = "https://github.com/arceos-hypervisor/axdevice.git", branch = "aar-next" }
+axdevice = { path = "../axdevice" }
 axdevice_base = "0.1"
-axvmconfig = { version = "0.1", default-features = false }
+# axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "aar-next" }
+axvmconfig = { path = "../axvmconfig" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_vcpu = "0.1"
@@ -41,7 +43,8 @@ arm_vcpu = "0.1"
 arm_vgic = { version = "0.1", features = ["vgicv3"] }
 
 [patch.crates-io]
-axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "aar-master" }
+# axvmconfig = { git = "https://github.com/arceos-hypervisor/axvmconfig.git", branch = "aar-next" }
+axvmconfig = { path = "../axvmconfig" }
 axvcpu = { git = "https://github.com/arceos-hypervisor/axvcpu", branch = "aar-master" }
 axvisor_api = { git = "https://github.com/arceos-hypervisor/axvisor_api", branch = "aar-master" }
 axaddrspace = { git = "https://github.com/arceos-hypervisor/axaddrspace", branch = "aar-master" }
