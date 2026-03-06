@@ -34,7 +34,7 @@ axaddrspace = "0.3"
 axvisor_api = "0.3"
 axdevice = "0.2.2"
 axdevice_base = "0.2.2"
-axvmconfig = "0.2.2"
+axvmconfig = { version = "0.2.2", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 x86_vcpu = "0.3"

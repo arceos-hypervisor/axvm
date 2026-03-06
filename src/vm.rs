@@ -32,12 +32,13 @@ use cpumask::CpuMask;
 use crate::config::{AxVMConfig, PhysCpuList};
 use crate::hal::PagingHandlerImpl;
 use crate::has_hardware_support;
-use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
+use crate::vcpu::{AxArchVCpuImpl};
 
-#[cfg(target_arch = "riscv64")]
+#[cfg(not(target_arch = "x86_64"))]
 use crate::vcpu::AxVCpuCreateConfig;
+
 #[cfg(target_arch = "aarch64")]
-use crate::vcpu::{AxVCpuCreateConfig, get_sysreg_device};
+use crate::vcpu::get_sysreg_device;
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -89,55 +90,6 @@ struct AxVMInnerMut {
     memory_regions: Vec<VMMemoryRegion>,
     config: AxVMConfig,
     vm_status: VMStatus,
-}
-
-/// VM status enumeration representing the lifecycle states of a virtual machine
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VMStatus {
-    /// VM is being created/loaded
-    Loading,
-    /// VM is loaded but not yet started
-    Loaded,
-    /// VM is currently running
-    Running,
-    /// VM is suspended (paused but can be resumed)
-    Suspended,
-    /// VM is in the process of shutting down
-    Stopping,
-    /// VM is stopped
-    Stopped,
-}
-
-impl VMStatus {
-    /// Get status as a string (lowercase)
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            VMStatus::Loading => "loading",
-            VMStatus::Loaded => "loaded",
-            VMStatus::Running => "running",
-            VMStatus::Suspended => "suspended",
-            VMStatus::Stopping => "stopping",
-            VMStatus::Stopped => "stopped",
-        }
-    }
-
-    /// Get status with emoji icon
-    pub fn as_str_with_icon(&self) -> &'static str {
-        match self {
-            VMStatus::Loading => "🔄 loading",
-            VMStatus::Loaded => "📦 loaded",
-            VMStatus::Running => "🚀 running",
-            VMStatus::Suspended => "🛑 suspended",
-            VMStatus::Stopping => "⏹️ stopping",
-            VMStatus::Stopped => "💤 stopped",
-        }
-    }
-}
-
-impl fmt::Display for VMStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
 }
 
 /// VM status enumeration representing the lifecycle states of a virtual machine

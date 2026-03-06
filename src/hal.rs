@@ -14,7 +14,7 @@
 
 use axaddrspace::{HostPhysAddr, HostVirtAddr};
 use axerrno::AxResult;
-use memory_addr::{PhysAddr, VirtAddr};
+use memory_addr::{PAGE_SIZE_4K, PhysAddr, VirtAddr};
 use page_table_multiarch::PagingHandler;
 
 /// The interfaces which the underlying software (kernel or hypervisor) must implement.
@@ -54,6 +54,26 @@ pub trait AxVMHal: Sized {
 pub struct PagingHandlerImpl;
 
 impl PagingHandler for PagingHandlerImpl {
+    fn alloc_frames(num: usize, align: usize) -> Option<PhysAddr> {
+        let align_frames = if align.is_multiple_of(PAGE_SIZE_4K) {
+            align / PAGE_SIZE_4K
+        } else {
+            panic!("align must be multiple of PAGE_SIZE_4K")
+        };
+
+        let align_frames_pow2 = if align_frames.is_power_of_two() {
+            align_frames.trailing_zeros()
+        } else {
+            panic!("align must be a power of 2")
+        };
+
+        axvisor_api::memory::alloc_contiguous_frames(num, align_frames_pow2 as _)
+    }
+
+    fn dealloc_frames(paddr: PhysAddr, num: usize) {
+        axvisor_api::memory::dealloc_contiguous_frames(paddr, num);
+    }
+
     fn alloc_frame() -> Option<PhysAddr> {
         axvisor_api::memory::alloc_frame()
     }
