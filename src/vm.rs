@@ -32,7 +32,7 @@ use cpumask::CpuMask;
 use crate::config::{AxVMConfig, PhysCpuList};
 use crate::hal::PagingHandlerImpl;
 use crate::has_hardware_support;
-use crate::vcpu::{AxArchVCpuImpl};
+use crate::vcpu::AxArchVCpuImpl;
 
 #[cfg(not(target_arch = "x86_64"))]
 use crate::vcpu::AxVCpuCreateConfig;
