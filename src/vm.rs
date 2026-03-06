@@ -1,3 +1,17 @@
+// Copyright 2025 The Axvisor Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::sync::Arc;
@@ -20,8 +34,10 @@ use crate::hal::PagingHandlerImpl;
 use crate::has_hardware_support;
 use crate::vcpu::{AxArchVCpuImpl, AxVCpuCreateConfig};
 
+#[cfg(target_arch = "riscv64")]
+use crate::vcpu::AxVCpuCreateConfig;
 #[cfg(target_arch = "aarch64")]
-use crate::vcpu::get_sysreg_device;
+use crate::vcpu::{AxVCpuCreateConfig, get_sysreg_device};
 
 const VM_ASPACE_BASE: usize = 0x0;
 const VM_ASPACE_SIZE: usize = 0x7fff_ffff_f000;
@@ -73,6 +89,55 @@ struct AxVMInnerMut {
     memory_regions: Vec<VMMemoryRegion>,
     config: AxVMConfig,
     vm_status: VMStatus,
+}
+
+/// VM status enumeration representing the lifecycle states of a virtual machine
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VMStatus {
+    /// VM is being created/loaded
+    Loading,
+    /// VM is loaded but not yet started
+    Loaded,
+    /// VM is currently running
+    Running,
+    /// VM is suspended (paused but can be resumed)
+    Suspended,
+    /// VM is in the process of shutting down
+    Stopping,
+    /// VM is stopped
+    Stopped,
+}
+
+impl VMStatus {
+    /// Get status as a string (lowercase)
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VMStatus::Loading => "loading",
+            VMStatus::Loaded => "loaded",
+            VMStatus::Running => "running",
+            VMStatus::Suspended => "suspended",
+            VMStatus::Stopping => "stopping",
+            VMStatus::Stopped => "stopped",
+        }
+    }
+
+    /// Get status with emoji icon
+    pub fn as_str_with_icon(&self) -> &'static str {
+        match self {
+            VMStatus::Loading => "🔄 loading",
+            VMStatus::Loaded => "📦 loaded",
+            VMStatus::Running => "🚀 running",
+            VMStatus::Suspended => "🛑 suspended",
+            VMStatus::Stopping => "⏹️ stopping",
+            VMStatus::Stopped => "💤 stopped",
+        }
+    }
+}
+
+impl fmt::Display for VMStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 /// VM status enumeration representing the lifecycle states of a virtual machine
@@ -186,15 +251,18 @@ impl AxVM {
                 hart_id: vcpu_id as _,
                 dtb_addr: dtb_addr.unwrap_or_default().as_usize(),
             };
-            #[cfg(target_arch = "x86_64")]
-            let arch_config = AxVCpuCreateConfig::default();
 
             vcpu_list.push(Arc::new(VCpu::new(
                 self.id(),
                 vcpu_id,
                 0, // Currently not used.
                 phys_cpu_set,
+                #[cfg(target_arch = "aarch64")]
                 arch_config,
+                #[cfg(target_arch = "riscv64")]
+                arch_config,
+                #[cfg(target_arch = "x86_64")]
+                (),
             )?));
         }
 
@@ -257,7 +325,12 @@ impl AxVM {
             )?;
         }
 
+        #[cfg(target_arch = "aarch64")]
         let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
+            emu_configs: inner_mut.config.emu_devices().to_vec(),
+        });
+        #[cfg(not(target_arch = "aarch64"))]
+        let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
             emu_configs: inner_mut.config.emu_devices().to_vec(),
         });
 
@@ -622,7 +695,10 @@ impl AxVM {
         let size = core::mem::size_of::<T>();
 
         // Ensure the address is properly aligned for the type.
-        if gpa_ptr.as_usize() % core::mem::align_of::<T>() != 0 {
+        if !gpa_ptr
+            .as_usize()
+            .is_multiple_of(core::mem::align_of::<T>())
+        {
             return ax_err!(InvalidInput, "Unaligned guest physical address");
         }
 

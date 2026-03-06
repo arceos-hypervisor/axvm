@@ -1,3 +1,17 @@
+// Copyright 2025 The Axvisor Team
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 //! The configuration structure for the VM.
 //! The `AxVMCrateConfig` is generated from toml file, and then converted to `AxVMConfig` for the VM creation.
 
@@ -11,6 +25,14 @@ pub use axvmconfig::{
     VMInterruptMode, VMType, VmMemConfig, VmMemMappingType,
 };
 
+// /// A part of `AxVCpuConfig`, which represents an architecture-dependent `VCpu`.
+// ///
+// /// The concrete type of configuration is defined in `AxArchVCpuImpl`.
+// #[derive(Clone, Copy, Debug, Default)]
+// pub struct AxArchVCpuConfig<H: AxVMHal> {
+//     pub create_config: <AxArchVCpuImpl<H> as AxArchVCpu>::CreateConfig,
+//     pub setup_config: <AxArchVCpuImpl<H> as AxArchVCpu>::SetupConfig,
+// }
 /// A part of `AxVMConfig`, which represents a `VCpu`.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AxVCpuConfig {
@@ -206,6 +228,7 @@ impl PhysCpuList {
     /// - The physical id of the vCpu, equal to vCpu id if not provided.
     pub fn get_vcpu_affinities_pcpu_ids(&self) -> Vec<(usize, Option<usize>, usize)> {
         let mut vcpu_pcpu_tuples = Vec::new();
+        #[cfg(target_arch = "riscv64")]
         let mut pcpu_mask_flag = false;
 
         if let Some(phys_cpu_ids) = &self.phys_cpu_ids
@@ -221,8 +244,16 @@ impl PhysCpuList {
             vcpu_pcpu_tuples.push((vcpu_id, None, vcpu_id));
         }
 
+        #[cfg(target_arch = "riscv64")]
         if let Some(phys_cpu_sets) = &self.phys_cpu_sets {
             pcpu_mask_flag = true;
+            for (vcpu_id, pcpu_mask_bitmap) in phys_cpu_sets.iter().enumerate() {
+                vcpu_pcpu_tuples[vcpu_id].1 = Some(*pcpu_mask_bitmap);
+            }
+        }
+
+        #[cfg(not(target_arch = "riscv64"))]
+        if let Some(phys_cpu_sets) = &self.phys_cpu_sets {
             for (vcpu_id, pcpu_mask_bitmap) in phys_cpu_sets.iter().enumerate() {
                 vcpu_pcpu_tuples[vcpu_id].1 = Some(*pcpu_mask_bitmap);
             }
@@ -233,7 +264,7 @@ impl PhysCpuList {
                 vcpu_pcpu_tuples[vcpu_id].2 = *phys_id;
                 #[cfg(target_arch = "riscv64")]
                 {
-                    if pcpu_mask_flag == false {
+                    if !pcpu_mask_flag {
                         // if don't assign pcpu mask yet, assign it manually
                         vcpu_pcpu_tuples[vcpu_id].1 = Some(1 << (*phys_id));
                     }
