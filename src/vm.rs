@@ -188,7 +188,7 @@ impl AxVM {
         let dtb_addr = inner_mut.config.image_config().dtb_load_gpa;
         let vcpu_id_pcpu_sets = inner_mut.config.phys_cpu_ls.get_vcpu_affinities_pcpu_ids();
 
-        info!("dtb_load_gpa: {:?}", dtb_addr);
+        info!("dtb_load_gpa: {dtb_addr:?}");
         debug!("id: {}, VCpuIdPCpuSets: {vcpu_id_pcpu_sets:#x?}", self.id());
 
         let mut vcpu_list = Vec::with_capacity(vcpu_id_pcpu_sets.len());
@@ -204,6 +204,10 @@ impl AxVM {
                 dtb_addr: dtb_addr.unwrap_or_default().as_usize(),
             };
 
+            // FIXME: VCpu is neither `Send` nor `Sync` by design, check whether
+            // 1. we should make it `Send` and `Sync`, or
+            // 2. we can guarantee that no cross-thread access is performed
+            #[allow(clippy::arc_with_non_send_sync)]
             vcpu_list.push(Arc::new(VCpu::new(
                 self.id(),
                 vcpu_id,
@@ -277,12 +281,8 @@ impl AxVM {
             )?;
         }
 
-        #[cfg(target_arch = "aarch64")]
+        #[cfg_attr(not(target_arch = "aarch64"), expect(unused_mut))]
         let mut devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
-            emu_configs: inner_mut.config.emu_devices().to_vec(),
-        });
-        #[cfg(not(target_arch = "aarch64"))]
-        let devices = axdevice::AxVmDevices::new(AxVmDeviceConfig {
             emu_configs: inner_mut.config.emu_devices().to_vec(),
         });
 
@@ -346,6 +346,7 @@ impl AxVM {
                 }
             };
             #[cfg(not(target_arch = "aarch64"))]
+            #[allow(clippy::let_unit_value)]
             let setup_config = <AxArchVCpuImpl as axvcpu::AxArchVCpu>::SetupConfig::default();
 
             let entry = if vcpu.id() == 0 {
