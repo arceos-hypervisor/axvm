@@ -39,6 +39,12 @@ impl FdtBuilder {
         Ok(Self { fdt })
     }
 
+    pub fn new_from_dtb(dtb_data: &[u8]) -> anyhow::Result<Self> {
+        let fdt = Fdt::from_bytes(dtb_data)
+            .map_err(|e| anyhow::anyhow!("Failed to parse DTB: {:?}", e))?;
+        Ok(Self { fdt })
+    }
+
     pub fn build(self) -> anyhow::Result<FdtData> {
         let dtb_data = self.fdt.encode();
         Ok(dtb_data)

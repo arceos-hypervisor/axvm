@@ -54,7 +54,14 @@ impl<H: ArchOp> StateInited<H> {
         }
         vmspace.load_kernel_image(&config)?;
 
-        let mut fdt = FdtBuilder::new()?;
+        let mut fdt = if let Some(dtb_config) = &config.image_config().dtb {
+            info!("Using DTB from config and patching it...");
+            FdtBuilder::new_from_dtb(&dtb_config.data)?
+        } else {
+            info!("No DTB provided in config, generating one...");
+            FdtBuilder::new()?
+        };
+
         fdt.setup_cpus(&vcpus)?;
         fdt.setup_memory(vmspace.memories().iter())?;
         fdt.setup_chosen(None)?;
