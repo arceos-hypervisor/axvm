@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# axvisor_api 测试脚本
+# axvm 测试脚本
 # 下载并调用 axci 仓库中的测试框架
 #
 
