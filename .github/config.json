@@ -5,6 +5,7 @@
     "x86_64-unknown-none",
     "riscv64gc-unknown-none-elf"
   ],
+  "unit_test_targets": [],
   "rust_components": [
     "rust-src",
     "clippy",
