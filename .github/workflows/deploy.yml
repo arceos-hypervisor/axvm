@@ -10,7 +10,7 @@ on:
 
 jobs:
   deploy:
-    uses: arceos-hypervisor/axci/.github/workflows/deploy.yml@ndev
+    uses: arceos-hypervisor/axci/.github/workflows/deploy.yml@main
     with:
       verify_branch: true
       verify_version: true
