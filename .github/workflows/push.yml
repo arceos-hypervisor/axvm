@@ -11,6 +11,6 @@ jobs:
   notify-parent:
     name: Notify Parent Repository
     # 调用 axci 仓库的可复用工作流
-    uses: arceos-hypervisor/axci/.github/workflows/push.yml@main
+    uses: arceos-hypervisor/axci/.github/workflows/push.yml@ndev
     secrets:
       PARENT_REPO_TOKEN: ${{ secrets.PARENT_REPO_TOKEN }}

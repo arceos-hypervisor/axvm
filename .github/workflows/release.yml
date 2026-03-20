@@ -12,14 +12,14 @@ on:
 
 jobs:
   check:
-    uses: arceos-hypervisor/axci/.github/workflows/check.yml@main
+    uses: arceos-hypervisor/axci/.github/workflows/check.yml@ndev
 
   test:
-    uses: arceos-hypervisor/axci/.github/workflows/test.yml@main
+    uses: arceos-hypervisor/axci/.github/workflows/test.yml@ndev
 
   release:
     needs: [check, test]
-    uses: arceos-hypervisor/axci/.github/workflows/release.yml@main
+    uses: arceos-hypervisor/axci/.github/workflows/release.yml@ndev
     with:
       verify_branch: true
       verify_version: true
