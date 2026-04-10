@@ -480,6 +480,7 @@ impl<H: AxVMHal, U: AxVCpuHal> AxVM<H, U> {
                 vcpu.setup_from_context(
                     address_space.page_table_root(),
                     host_ctxs[vcpu_id].clone(),
+                    false,
                 )?;
 
                 vcpu_list.push(Arc::new(vcpu));
